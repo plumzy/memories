@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: memories
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: APP_BASE_URL
+        value: https://memories-l394.onrender.com
+      - key: APP_USER_ID
+        value: anniversary

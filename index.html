@@ -3,99 +3,190 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#d9c2ff">
-  <title>Our Anniversary Memories</title>
+  <meta name="theme-color" content="#f8efff">
+  <title>Lavender Memories</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="tulip-corner tulip-left"></div>
-  <div class="tulip-corner tulip-right"></div>
+  <main class="app-shell">
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <div class="tulip tulip-top" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="tulip tulip-bottom" aria-hidden="true"><span></span><span></span><span></span></div>
 
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">Anniversary Gallery</p>
-      <h1>Our memories, blooming softly.</h1>
-    </div>
-    <div class="top-actions">
-      <button id="installBtn" class="icon-btn" title="Install app">Install</button>
-      <button id="refreshBtn" class="icon-btn" title="Refresh">Reload</button>
-    </div>
-  </header>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Our anniversary story</p>
+        <h1>Lavender Memories</h1>
+      </div>
+      <div class="top-actions">
+        <button class="icon-text" id="importButton" type="button"><span>+</span> Import</button>
+        <button class="icon-button" id="installBtn" type="button" aria-label="Install app">I</button>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="Open carousel controls">*</button>
+      </div>
+    </header>
 
-  <main>
-    <section class="hero">
-      <div id="carouselTrack" class="carousel-track"></div>
-      <div class="carousel-overlay">
-        <div>
-          <p id="carouselCaption" class="caption-text">Upload your first favorite memory.</p>
-          <p id="carouselAuthor" class="caption-author"></p>
+    <section class="hero-section" aria-label="Memory carousel">
+      <div class="hero-stage" id="heroStage">
+        <div class="hero-glow"></div>
+        <button class="hero-nav hero-prev" id="prevHero" type="button" aria-label="Previous memory">‹</button>
+        <button class="hero-nav hero-next" id="nextHero" type="button" aria-label="Next memory">›</button>
+        <button class="play-toggle" id="playToggle" type="button" aria-label="Pause carousel">II</button>
+        <div class="hero-image-wrap"><img id="heroImage" alt=""></div>
+        <div class="hero-caption" id="heroCaption"></div>
+        <div class="empty-hero" id="emptyHero">
+          <div class="empty-tulip"></div>
+          <h2>No memories in rotation</h2>
+          <p>Add photos, choose a folder, or select memories for the carousel.</p>
         </div>
-        <div class="carousel-controls">
-          <button id="prevBtn" class="icon-btn" title="Previous">Prev</button>
-          <button id="playBtn" class="icon-btn" title="Pause or play">Pause</button>
-          <button id="nextBtn" class="icon-btn" title="Next">Next</button>
-        </div>
       </div>
-      <div class="mode-row" role="tablist">
-        <button class="mode active" data-mode="all">All Photos</button>
-        <button class="mode" data-mode="folders">Full Folder Cycle</button>
-        <button class="mode" data-mode="selected">Selected Photos</button>
-      </div>
+      <div class="hero-dots" id="heroDots" aria-hidden="true"></div>
     </section>
 
-    <section class="toolbar">
-      <label class="upload-button">
-        <input id="fileInput" type="file" accept="image/*" multiple>
-        <span>Upload</span>
-      </label>
-      <button id="googleBtn">Google Photos</button>
-      <button id="newFolderBtn">New Folder</button>
-      <select id="folderSelect" title="Current folder"></select>
-      <button id="moveBtn">Move Selected</button>
-      <button id="deleteSelectedBtn">Delete Selected</button>
+    <section class="section-heading">
+      <div>
+        <h2>Memory folders</h2>
+        <p>Soft chapters from the two of you</p>
+      </div>
+      <button class="flower-badge" id="refreshButton" type="button" aria-label="Refresh memories">↻</button>
     </section>
 
-    <section>
-      <div class="section-head">
-        <h2>Folders</h2>
-        <span id="countBadge"></span>
-      </div>
-      <div id="foldersGrid" class="folders-grid"></div>
-    </section>
-
-    <section>
-      <div class="section-head">
-        <h2 id="galleryTitle">All Photos</h2>
-        <button id="clearSelectionBtn" class="ghost">Clear Selection</button>
-      </div>
-      <div id="galleryGrid" class="gallery-grid"></div>
-    </section>
+    <section class="folder-grid" id="folderGrid" aria-label="Memory folders"></section>
   </main>
 
-  <dialog id="viewer" class="viewer">
-    <button id="closeViewer" class="viewer-close" title="Close">Close</button>
-    <button id="viewerPrev" class="viewer-nav left" title="Previous">Prev</button>
-    <img id="viewerImage" alt="">
-    <button id="viewerNext" class="viewer-nav right" title="Next">Next</button>
-    <form id="captionForm" class="viewer-panel">
-      <input id="captionInput" placeholder="Add a little note for this memory">
+  <dialog class="panel-dialog" id="folderDialog">
+    <div class="dialog-shell large">
+      <header class="dialog-header">
+        <button class="icon-button ghost" id="closeFolder" type="button" aria-label="Close folder">‹</button>
+        <div>
+          <h2 id="folderTitle">Folder</h2>
+          <p id="folderSubtitle"></p>
+        </div>
+        <button class="icon-button" id="folderImportButton" type="button" aria-label="Import to folder">+</button>
+      </header>
+      <div class="batch-bar" id="batchBar">
+        <strong id="batchCount">0 selected</strong>
+        <div>
+          <button id="batchMove" type="button">Move</button>
+          <button class="danger" id="batchDelete" type="button">Delete</button>
+          <button id="batchClear" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="media-grid" id="mediaGrid"></div>
+    </div>
+  </dialog>
+
+  <dialog class="viewer-dialog" id="viewerDialog">
+    <div class="viewer-shell">
+      <img id="viewerImage" alt="">
+      <div class="viewer-top">
+        <button class="icon-button glass" id="closeViewer" type="button" aria-label="Close viewer">x</button>
+        <span id="viewerCounter"></span>
+      </div>
+      <button class="viewer-nav viewer-prev" id="viewerPrev" type="button" aria-label="Previous photo">‹</button>
+      <button class="viewer-nav viewer-next" id="viewerNext" type="button" aria-label="Next photo">›</button>
+      <div class="viewer-caption" id="viewerCaption"></div>
+      <div class="viewer-actions">
+        <button id="editCaptionButton" type="button">Caption</button>
+        <button id="toggleCarouselButton" type="button">Carousel</button>
+        <button id="movePhotoButton" type="button">Move</button>
+        <button class="danger" id="deletePhotoButton" type="button">Delete</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="panel-dialog" id="settingsDialog">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <button class="icon-button ghost" id="closeSettings" type="button" aria-label="Close settings">x</button>
+        <div>
+          <h2>Carousel controls</h2>
+          <p>Choose how your memories rotate</p>
+        </div>
+        <span></span>
+      </header>
+      <section class="control-card">
+        <label>Carousel source</label>
+        <div class="segmented" id="modeControls"></div>
+      </section>
+      <section class="control-card" id="folderCycleControls">
+        <label>Folder used for full cycle</label>
+        <div class="pill-row" id="folderSourceList"></div>
+      </section>
+      <section class="control-card" id="selectedControls">
+        <label>Selected rotation photos</label>
+        <div class="select-grid" id="selectedPhotoGrid"></div>
+      </section>
+      <section class="control-card">
+        <label>Rotation preview</label>
+        <div class="preview-row" id="rotationPreview"></div>
+      </section>
+      <section class="control-card settings-list">
+        <div class="setting-row">
+          <div><strong>Auto-rotate</strong><p>Pause or play the hero memories.</p></div>
+          <input id="autoRotateInput" type="checkbox">
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="panel-dialog" id="importDialog">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <button class="icon-button ghost" id="closeImport" type="button" aria-label="Close import">x</button>
+        <div>
+          <h2>Import memories</h2>
+          <p>Images are compressed at 68% with thumbnails.</p>
+        </div>
+        <span></span>
+      </header>
+      <section class="control-card">
+        <label>Target folder</label>
+        <div class="pill-row" id="importFolderList"></div>
+      </section>
+      <section class="control-card">
+        <div class="import-card">
+          <div><strong>Device photos</strong><p>Select one or more images from this browser.</p></div>
+          <label class="primary-button">Choose files<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+        </div>
+      </section>
+      <section class="control-card">
+        <div class="import-card">
+          <div><strong>Google Photos</strong><p>Pick photos from Google Photos, then compress them into this app.</p></div>
+          <button class="secondary-button" id="connectGoogle" type="button">Import from Google Photos</button>
+        </div>
+      </section>
+      <p class="status-line" id="importStatus"></p>
+    </div>
+  </dialog>
+
+  <dialog class="panel-dialog small" id="captionDialog">
+    <form class="dialog-shell" method="dialog">
+      <header class="dialog-header">
+        <button class="icon-button ghost" id="closeCaption" type="button" aria-label="Close caption editor">x</button>
+        <div><h2>Memory caption</h2><p>Add a note and optional author tag.</p></div>
+        <span></span>
+      </header>
+      <textarea id="captionInput" placeholder="Add a memory here..."></textarea>
       <input id="authorInput" placeholder="Author tag, optional">
-      <div>
-        <button type="submit">Save Caption</button>
-        <button id="toggleCarouselBtn" type="button">Carousel</button>
-        <button id="viewerMoveBtn" type="button">Move</button>
-        <button id="viewerDeleteBtn" type="button" class="danger">Delete</button>
+      <div class="dialog-actions">
+        <button class="danger" id="deleteCaption" type="button">Delete</button>
+        <button class="primary-button" id="saveCaption" type="button">Save caption</button>
       </div>
     </form>
   </dialog>
 
-  <template id="emptyTemplate">
-    <div class="empty-state">
-      <div class="tulip-mini"></div>
-      <p>No memories here yet.</p>
+  <dialog class="panel-dialog small" id="moveDialog">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <button class="icon-button ghost" id="closeMove" type="button" aria-label="Close move panel">x</button>
+        <div><h2>Move memories</h2><p id="moveCount">1 selected</p></div>
+        <span></span>
+      </header>
+      <div class="folder-move-list" id="moveFolderList"></div>
     </div>
-  </template>
+  </dialog>
 
   <script src="/script.js" defer></script>
 </body>

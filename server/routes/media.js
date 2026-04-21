@@ -41,6 +41,16 @@ function streamR2Object(res, object, fallbackType) {
   return res.end(object.Body);
 }
 
+function withApiMediaUrls(item) {
+  return {
+    ...item,
+    r2_url: item.url,
+    r2_thumbnail_url: item.thumbnail_url,
+    url: `/api/media/${item.id}/content`,
+    thumbnail_url: `/api/media/${item.id}/thumbnail`
+  };
+}
+
 router.get("/media", async (_req, res, next) => {
   try {
     const [{ data: folders, error: folderError }, { data: media, error: mediaError }, { data: carousel, error: carouselError }] = await Promise.all([
@@ -51,7 +61,7 @@ router.get("/media", async (_req, res, next) => {
     if (folderError) throw folderError;
     if (mediaError) throw mediaError;
     if (carouselError) throw carouselError;
-    res.json({ folders, media, carousel });
+    res.json({ folders, media: (media || []).map(withApiMediaUrls), carousel });
   } catch (error) {
     next(error);
   }
@@ -145,7 +155,7 @@ router.post("/upload", upload.array("images", 40), async (req, res, next) => {
       if (error) throw error;
       created.push(data);
     }
-    res.status(201).json({ media: created });
+    res.status(201).json({ media: created.map(withApiMediaUrls) });
   } catch (error) {
     next(error);
   }
@@ -165,7 +175,7 @@ router.patch("/media/:id", async (req, res, next) => {
       .select()
       .single();
     if (error) throw error;
-    res.json(data);
+    res.json(withApiMediaUrls(data));
   } catch (error) {
     next(error);
   }
@@ -195,7 +205,7 @@ router.post("/move", async (req, res, next) => {
       .eq("user_id", userId())
       .select();
     if (error) throw error;
-    res.json({ media: data });
+    res.json({ media: (data || []).map(withApiMediaUrls) });
   } catch (error) {
     next(error);
   }

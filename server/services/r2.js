@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 const {
   R2_ACCOUNT_ID,
@@ -39,6 +39,10 @@ export async function uploadObject({ key, body, contentType }) {
     CacheControl: "public, max-age=31536000, immutable"
   }));
   return publicUrlForKey(key);
+}
+
+export async function getObject(key) {
+  return r2.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
 }
 
 export async function deleteObject(key) {

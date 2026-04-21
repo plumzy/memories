@@ -21,17 +21,17 @@
         <h1>Lavender Memories</h1>
       </div>
       <div class="top-actions">
-        <button class="icon-text" id="importButton" type="button"><span>+</span> Import</button>
-        <button class="icon-button" id="installBtn" type="button" aria-label="Install app">I</button>
-        <button class="icon-button" id="settingsButton" type="button" aria-label="Open carousel controls">*</button>
+        <button class="icon-text primary-action" id="importButton" type="button"><span>+</span> Import</button>
+        <button class="icon-button" id="installBtn" type="button" aria-label="Install app" title="Install app">I</button>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="Open carousel controls" title="Carousel controls">*</button>
       </div>
     </header>
 
     <section class="hero-section" aria-label="Memory carousel">
       <div class="hero-stage" id="heroStage">
         <div class="hero-glow"></div>
-        <button class="hero-nav hero-prev" id="prevHero" type="button" aria-label="Previous memory">‹</button>
-        <button class="hero-nav hero-next" id="nextHero" type="button" aria-label="Next memory">›</button>
+        <button class="hero-nav hero-prev" id="prevHero" type="button" aria-label="Previous memory">&lsaquo;</button>
+        <button class="hero-nav hero-next" id="nextHero" type="button" aria-label="Next memory">&rsaquo;</button>
         <button class="play-toggle" id="playToggle" type="button" aria-label="Pause carousel">II</button>
         <div class="hero-image-wrap"><img id="heroImage" alt=""></div>
         <div class="hero-caption" id="heroCaption"></div>
@@ -39,9 +39,15 @@
           <div class="empty-tulip"></div>
           <h2>No memories in rotation</h2>
           <p>Add photos, choose a folder, or select memories for the carousel.</p>
+          <button class="primary-button" id="emptyImportButton" type="button">Import memories</button>
         </div>
       </div>
       <div class="hero-dots" id="heroDots" aria-hidden="true"></div>
+      <div class="hero-meta" aria-label="Gallery summary">
+        <span id="photoCount">0 photos</span>
+        <span id="folderCount">0 folders</span>
+        <span id="carouselModeLabel">All Photos</span>
+      </div>
     </section>
 
     <section class="section-heading">
@@ -58,13 +64,14 @@
   <dialog class="panel-dialog" id="folderDialog">
     <div class="dialog-shell large">
       <header class="dialog-header">
-        <button class="icon-button ghost" id="closeFolder" type="button" aria-label="Close folder">‹</button>
+        <button class="icon-button ghost" id="closeFolder" type="button" aria-label="Close folder">&lsaquo;</button>
         <div>
           <h2 id="folderTitle">Folder</h2>
           <p id="folderSubtitle"></p>
         </div>
         <button class="icon-button" id="folderImportButton" type="button" aria-label="Import to folder">+</button>
       </header>
+      <p class="helper-line">Right-click or long-press a photo to select more than one memory.</p>
       <div class="batch-bar" id="batchBar">
         <strong id="batchCount">0 selected</strong>
         <div>
@@ -84,8 +91,8 @@
         <button class="icon-button glass" id="closeViewer" type="button" aria-label="Close viewer">x</button>
         <span id="viewerCounter"></span>
       </div>
-      <button class="viewer-nav viewer-prev" id="viewerPrev" type="button" aria-label="Previous photo">‹</button>
-      <button class="viewer-nav viewer-next" id="viewerNext" type="button" aria-label="Next photo">›</button>
+      <button class="viewer-nav viewer-prev" id="viewerPrev" type="button" aria-label="Previous photo">&lsaquo;</button>
+      <button class="viewer-nav viewer-next" id="viewerNext" type="button" aria-label="Next photo">&rsaquo;</button>
       <div class="viewer-caption" id="viewerCaption"></div>
       <div class="viewer-actions">
         <button id="editCaptionButton" type="button">Caption</button>
@@ -127,6 +134,18 @@
           <div><strong>Auto-rotate</strong><p>Pause or play the hero memories.</p></div>
           <input id="autoRotateInput" type="checkbox">
         </div>
+        <div class="setting-row">
+          <div><strong>Show captions</strong><p>Display captions over carousel photos.</p></div>
+          <input id="showCaptionsInput" type="checkbox">
+        </div>
+        <div class="setting-row">
+          <div><strong>Rotation speed</strong><p><span id="speedValue"></span> seconds</p></div>
+          <input id="speedInput" type="range" min="3000" max="9000" step="500">
+        </div>
+        <div class="setting-row">
+          <div><strong>Glow intensity</strong><p><span id="glowValue"></span>% lavender glow</p></div>
+          <input id="glowInput" type="range" min="30" max="100" step="5">
+        </div>
       </section>
     </div>
   </dialog>
@@ -137,26 +156,32 @@
         <button class="icon-button ghost" id="closeImport" type="button" aria-label="Close import">x</button>
         <div>
           <h2>Import memories</h2>
-          <p>Images are compressed at 68% with thumbnails.</p>
+          <p>Every image is compressed at 65-70% and thumbnailed on the server.</p>
         </div>
         <span></span>
       </header>
       <section class="control-card">
         <label>Target folder</label>
         <div class="pill-row" id="importFolderList"></div>
-      </section>
-      <section class="control-card">
-        <div class="import-card">
-          <div><strong>Device photos</strong><p>Select one or more images from this browser.</p></div>
-          <label class="primary-button">Choose files<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+        <div class="inline-create">
+          <input id="newFolderName" placeholder="New folder name">
+          <button id="createFolderButton" type="button">Create</button>
         </div>
       </section>
+      <section class="control-card upload-drop" id="dropZone">
+        <div class="drop-copy">
+          <strong>Device photos</strong>
+          <p>Drop images here or choose files from this browser. Uploads use the same backend compression, thumbnail, R2, and Supabase pipeline.</p>
+        </div>
+        <label class="primary-button">Choose files<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+      </section>
       <section class="control-card">
         <div class="import-card">
-          <div><strong>Google Photos</strong><p>Pick photos from Google Photos, then compress them into this app.</p></div>
+          <div><strong>Google Photos</strong><p>Pick photos from Google Photos, then import them into the selected folder.</p></div>
           <button class="secondary-button" id="connectGoogle" type="button">Import from Google Photos</button>
         </div>
       </section>
+      <div class="progress-shell" id="progressShell" hidden><span id="progressBar"></span></div>
       <p class="status-line" id="importStatus"></p>
     </div>
   </dialog>

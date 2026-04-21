@@ -7,7 +7,11 @@ import { supabase } from "../services/supabase.js";
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }
+  limits: { fileSize: 25 * 1024 * 1024, files: 40 },
+  fileFilter: (_req, file, callback) => {
+    if (!file.mimetype.startsWith("image/")) return callback(null, false);
+    callback(null, true);
+  }
 });
 
 const userId = () => process.env.APP_USER_ID || "anniversary";
@@ -121,14 +125,14 @@ router.patch("/folders/:id", async (req, res, next) => {
   }
 });
 
-router.post("/upload", upload.array("images", 40), async (req, res, next) => {
+router.post("/upload", upload.any(), async (req, res, next) => {
   try {
     const folderId = req.body.folderId || "default";
     await ensureFolder(folderId, req.body.folderName || "Memories");
 
+    const uploadedFiles = (req.files || []).filter((file) => file.mimetype.startsWith("image/"));
     const created = [];
-    for (const file of req.files || []) {
-      if (!file.mimetype.startsWith("image/")) continue;
+    for (const file of uploadedFiles) {
       const compressed = await compressImage(file);
       const key = mediaKey({ userId: userId(), folderId, fileName: file.originalname });
       const thumbnailKey = key.replace(/(\.[^.]+)?$/, "-thumb.jpg");

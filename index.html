@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#d9c2ff">
+  <title>Our Anniversary Memories</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="tulip-corner tulip-left"></div>
+  <div class="tulip-corner tulip-right"></div>
+
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Anniversary Gallery</p>
+      <h1>Our memories, blooming softly.</h1>
+    </div>
+    <div class="top-actions">
+      <button id="installBtn" class="icon-btn" title="Install app">Install</button>
+      <button id="refreshBtn" class="icon-btn" title="Refresh">Reload</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div id="carouselTrack" class="carousel-track"></div>
+      <div class="carousel-overlay">
+        <div>
+          <p id="carouselCaption" class="caption-text">Upload your first favorite memory.</p>
+          <p id="carouselAuthor" class="caption-author"></p>
+        </div>
+        <div class="carousel-controls">
+          <button id="prevBtn" class="icon-btn" title="Previous">Prev</button>
+          <button id="playBtn" class="icon-btn" title="Pause or play">Pause</button>
+          <button id="nextBtn" class="icon-btn" title="Next">Next</button>
+        </div>
+      </div>
+      <div class="mode-row" role="tablist">
+        <button class="mode active" data-mode="all">All Photos</button>
+        <button class="mode" data-mode="folders">Full Folder Cycle</button>
+        <button class="mode" data-mode="selected">Selected Photos</button>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <label class="upload-button">
+        <input id="fileInput" type="file" accept="image/*" multiple>
+        <span>Upload</span>
+      </label>
+      <button id="googleBtn">Google Photos</button>
+      <button id="newFolderBtn">New Folder</button>
+      <select id="folderSelect" title="Current folder"></select>
+      <button id="moveBtn">Move Selected</button>
+      <button id="deleteSelectedBtn">Delete Selected</button>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Folders</h2>
+        <span id="countBadge"></span>
+      </div>
+      <div id="foldersGrid" class="folders-grid"></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2 id="galleryTitle">All Photos</h2>
+        <button id="clearSelectionBtn" class="ghost">Clear Selection</button>
+      </div>
+      <div id="galleryGrid" class="gallery-grid"></div>
+    </section>
+  </main>
+
+  <dialog id="viewer" class="viewer">
+    <button id="closeViewer" class="viewer-close" title="Close">Close</button>
+    <button id="viewerPrev" class="viewer-nav left" title="Previous">Prev</button>
+    <img id="viewerImage" alt="">
+    <button id="viewerNext" class="viewer-nav right" title="Next">Next</button>
+    <form id="captionForm" class="viewer-panel">
+      <input id="captionInput" placeholder="Add a little note for this memory">
+      <input id="authorInput" placeholder="Author tag, optional">
+      <div>
+        <button type="submit">Save Caption</button>
+        <button id="toggleCarouselBtn" type="button">Carousel</button>
+        <button id="viewerMoveBtn" type="button">Move</button>
+        <button id="viewerDeleteBtn" type="button" class="danger">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="emptyTemplate">
+    <div class="empty-state">
+      <div class="tulip-mini"></div>
+      <p>No memories here yet.</p>
+    </div>
+  </template>
+
+  <script src="/script.js" defer></script>
+</body>
+</html>

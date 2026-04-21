@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { compressImage } from "../services/compression.js";
-import { deleteObject, mediaKey, uploadObject } from "../services/r2.js";
+import { deleteObject, getObject, mediaKey, uploadObject } from "../services/r2.js";
 import { supabase } from "../services/supabase.js";
 
 const router = express.Router();
@@ -22,6 +22,25 @@ async function ensureFolder(folderId, name = "Memories") {
   return data;
 }
 
+async function findMediaItem(id) {
+  const { data, error } = await supabase
+    .from("media_items")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId())
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+function streamR2Object(res, object, fallbackType) {
+  res.setHeader("Content-Type", object.ContentType || fallbackType);
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  if (object.ContentLength) res.setHeader("Content-Length", object.ContentLength);
+  if (object.Body?.pipe) return object.Body.pipe(res);
+  return res.end(object.Body);
+}
+
 router.get("/media", async (_req, res, next) => {
   try {
     const [{ data: folders, error: folderError }, { data: media, error: mediaError }, { data: carousel, error: carouselError }] = await Promise.all([
@@ -33,6 +52,27 @@ router.get("/media", async (_req, res, next) => {
     if (mediaError) throw mediaError;
     if (carouselError) throw carouselError;
     res.json({ folders, media, carousel });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/media/:id/content", async (req, res, next) => {
+  try {
+    const item = await findMediaItem(req.params.id);
+    const object = await getObject(item.storage_key);
+    streamR2Object(res, object, "image/jpeg");
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/media/:id/thumbnail", async (req, res, next) => {
+  try {
+    const item = await findMediaItem(req.params.id);
+    const key = item.thumbnail_storage_key || item.storage_key;
+    const object = await getObject(key);
+    streamR2Object(res, object, "image/jpeg");
   } catch (error) {
     next(error);
   }
@@ -133,13 +173,7 @@ router.patch("/media/:id", async (req, res, next) => {
 
 router.delete("/media/:id", async (req, res, next) => {
   try {
-    const { data: item, error: fetchError } = await supabase
-      .from("media_items")
-      .select("*")
-      .eq("id", req.params.id)
-      .eq("user_id", userId())
-      .single();
-    if (fetchError) throw fetchError;
+    const item = await findMediaItem(req.params.id);
     await Promise.all([deleteObject(item.storage_key), deleteObject(item.thumbnail_storage_key)]);
     const { error } = await supabase.from("media_items").delete().eq("id", req.params.id).eq("user_id", userId());
     if (error) throw error;

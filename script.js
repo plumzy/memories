@@ -1,7 +1,10 @@
+const UI_PREFS_KEY = "lavender-memories-ui-v1";
+
 const state = {
   folders: [],
   media: [],
   carousel: { mode: "all", selected_ids: [], playing: true },
+  prefs: loadPrefs(),
   currentFolderId: null,
   importFolderId: "default",
   selectedIds: new Set(),
@@ -10,6 +13,8 @@ const state = {
   carouselIndex: 0,
   timer: null,
   touchStart: 0,
+  longPressTimer: null,
+  longPressTriggered: false,
   googleAccessToken: null,
   googleSession: null
 };
@@ -23,6 +28,19 @@ const api = async (path, options = {}) => {
   }
   return response.json();
 };
+
+function loadPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(UI_PREFS_KEY) || "{}");
+    return { showCaptions: saved.showCaptions !== false, speed: saved.speed || 5200, glow: saved.glow || 76 };
+  } catch {
+    return { showCaptions: true, speed: 5200, glow: 76 };
+  }
+}
+
+function savePrefs() {
+  localStorage.setItem(UI_PREFS_KEY, JSON.stringify(state.prefs));
+}
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char]));
@@ -41,6 +59,7 @@ async function loadData() {
   state.media = data.media;
   state.carousel = data.carousel || state.carousel;
   state.importFolderId = state.importFolderId || state.folders[0]?.id || "default";
+  if (!state.currentFolderId && state.folders[0]) state.currentFolderId = state.folders[0].id;
   renderAll();
 }
 
@@ -57,15 +76,23 @@ function getCarouselMedia() {
 function renderAll() {
   renderCarousel();
   renderFolders();
+  renderSummary();
   if (byId("folderDialog").open && state.currentFolderId) renderFolderDialog(state.currentFolderId);
   if (byId("settingsDialog").open) renderSettings();
   if (byId("importDialog").open) renderImport();
   if (byId("viewerDialog").open) renderViewer();
 }
 
+function renderSummary() {
+  byId("photoCount").textContent = `${state.media.length} ${state.media.length === 1 ? "photo" : "photos"}`;
+  byId("folderCount").textContent = `${state.folders.length} ${state.folders.length === 1 ? "folder" : "folders"}`;
+  byId("carouselModeLabel").textContent = ({ all: "All Photos", folders: "Folder Cycle", selected: "Selected Photos" })[state.carousel.mode] || "All Photos";
+}
+
 function renderCarousel() {
   const items = getCarouselMedia();
   clearInterval(state.timer);
+  document.documentElement.style.setProperty("--hero-glow", `rgba(181,112,255,${state.prefs.glow / 140})`);
   if (state.carouselIndex >= items.length) state.carouselIndex = 0;
   byId("emptyHero").classList.toggle("show", items.length === 0);
   byId("heroImage").hidden = items.length === 0;
@@ -77,8 +104,10 @@ function renderCarousel() {
     const item = items[state.carouselIndex];
     byId("heroImage").src = mediaUrl(item);
     byId("heroImage").alt = item.caption || "Anniversary memory";
-    byId("heroCaption").classList.add("show");
-    byId("heroCaption").innerHTML = `<div class="caption-author">${escapeHtml(item.author ? `${item.author} wrote` : "Memory")}</div><div class="caption-copy">${escapeHtml(item.caption || "Add a memory here...")}</div>`;
+    byId("heroCaption").classList.toggle("show", state.prefs.showCaptions);
+    byId("heroCaption").innerHTML = state.prefs.showCaptions
+      ? `<div class="caption-author">${escapeHtml(item.author ? `${item.author} wrote` : "Memory")}</div><div class="caption-copy">${escapeHtml(item.caption || "Add a memory here...")}</div>`
+      : "";
   } else {
     byId("heroCaption").classList.remove("show");
     byId("heroCaption").innerHTML = "";
@@ -86,14 +115,15 @@ function renderCarousel() {
 
   byId("heroDots").innerHTML = items.map((item, index) => `<span class="${index === state.carouselIndex ? "active" : ""}" data-dot="${item.id}"></span>`).join("");
   byId("playToggle").textContent = state.carousel.playing ? "II" : "Play";
-  if (state.carousel.playing && items.length > 1) state.timer = setInterval(() => changeCarousel(1), 5200);
+  if (state.carousel.playing && items.length > 1) state.timer = setInterval(() => changeCarousel(1), state.prefs.speed);
 }
 
 function changeCarousel(direction) {
   const items = getCarouselMedia();
   if (!items.length) return;
   state.carouselIndex = (state.carouselIndex + direction + items.length) % items.length;
-  renderCarousel();
+  byId("heroImage").classList.remove("active");
+  window.setTimeout(renderCarousel, 90);
 }
 
 function renderFolders() {
@@ -123,7 +153,7 @@ function renderFolderDialog(folderId) {
   byId("batchBar").classList.toggle("show", state.selectedIds.size > 0);
   byId("batchCount").textContent = `${state.selectedIds.size} selected`;
   if (!items.length) {
-    byId("mediaGrid").innerHTML = `<div class="empty-inline"><div><h2>No memories here yet</h2><p>Import photos into this folder to start this chapter.</p></div></div>`;
+    byId("mediaGrid").innerHTML = `<div class="empty-inline"><div><div class="empty-tulip"></div><h2>No memories here yet</h2><p>Import photos into this folder to start this chapter.</p></div></div>`;
     return;
   }
   byId("mediaGrid").innerHTML = items.map((item) => `<button class="media-card ${state.selectedIds.has(item.id) ? "selected" : ""}" type="button" data-media="${item.id}">
@@ -162,16 +192,35 @@ function changeViewer(direction) {
   renderViewer();
 }
 
+function setProgress(active, width = 0) {
+  byId("progressShell").hidden = !active;
+  byId("progressBar").style.width = `${width}%`;
+}
+
 async function uploadFiles(files) {
-  if (!files.length) return;
+  const images = files.filter((file) => file.type.startsWith("image/"));
+  if (!images.length) return;
   const form = new FormData();
   form.append("folderId", state.importFolderId || "default");
   form.append("folderName", folderName(state.importFolderId));
-  for (const file of files) form.append("images", file);
+  for (const file of images) form.append("images", file);
   byId("importStatus").textContent = "Uploading and compressing memories...";
+  setProgress(true, 18);
   await api("/api/upload", { method: "POST", body: form });
-  byId("importStatus").textContent = `${files.length} photo${files.length === 1 ? "" : "s"} imported.`;
+  setProgress(true, 100);
+  byId("importStatus").textContent = `${images.length} photo${images.length === 1 ? "" : "s"} imported.`;
   await loadData();
+  window.setTimeout(() => setProgress(false), 900);
+}
+
+async function createFolder() {
+  const name = byId("newFolderName").value.trim();
+  if (!name) return;
+  const folder = await api("/api/folders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+  state.importFolderId = folder.id;
+  byId("newFolderName").value = "";
+  await loadData();
+  renderImport();
 }
 
 async function deleteIds(ids) {
@@ -192,8 +241,8 @@ async function moveIds(ids, folderId) {
 function openMoveDialog(ids) {
   byId("moveCount").textContent = `${ids.length} selected`;
   byId("moveFolderList").innerHTML = state.folders.map((folder) => `<button data-move-folder="${folder.id}" type="button">${escapeHtml(folder.name)} · ${folderMedia(folder.id).length}</button>`).join("");
-  byId("moveDialog").showModal();
   byId("moveFolderList").dataset.ids = JSON.stringify(ids);
+  byId("moveDialog").showModal();
 }
 
 async function updateMedia(id, payload) {
@@ -227,9 +276,17 @@ async function toggleCarouselItem(id) {
   await updateMedia(id, { included_in_carousel: !item.included_in_carousel, carousel_order: item.carousel_order ?? state.media.length });
 }
 
-async function saveCarouselMode(mode) {
-  state.carousel.mode = mode;
-  await api("/api/carousel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, selectedIds: state.media.filter((item) => item.included_in_carousel).map((item) => item.id), playing: state.carousel.playing }) });
+async function persistCarouselSettings(overrides = {}) {
+  state.carousel = { ...state.carousel, ...overrides };
+  await api("/api/carousel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: state.carousel.mode,
+      selectedIds: state.media.filter((item) => item.included_in_carousel).map((item) => item.id),
+      playing: state.carousel.playing
+    })
+  });
   await loadData();
 }
 
@@ -241,6 +298,11 @@ function renderSettings() {
   byId("selectedPhotoGrid").innerHTML = state.media.map((item) => `<button class="select-card ${item.included_in_carousel ? "selected" : ""}" type="button" data-select-carousel="${item.id}"><img src="${thumbUrl(item)}" alt=""><span class="check-badge">${item.included_in_carousel ? "OK" : "+"}</span></button>`).join("");
   byId("rotationPreview").innerHTML = getCarouselMedia().map((item, index) => `<div class="preview-card"><img src="${thumbUrl(item)}" alt=""><span class="preview-order">${index + 1}</span></div>`).join("");
   byId("autoRotateInput").checked = state.carousel.playing;
+  byId("showCaptionsInput").checked = state.prefs.showCaptions;
+  byId("speedInput").value = state.prefs.speed;
+  byId("speedValue").textContent = (state.prefs.speed / 1000).toFixed(1);
+  byId("glowInput").value = state.prefs.glow;
+  byId("glowValue").textContent = state.prefs.glow;
 }
 
 function renderImport() {
@@ -263,49 +325,63 @@ async function launchGooglePhotos() {
 async function maybeImportGoogleSelection() {
   if (!state.googleAccessToken || !state.googleSession?.id) return false;
   byId("importStatus").textContent = "Importing Google Photos selection...";
+  setProgress(true, 25);
   const result = await api("/api/google-photos/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accessToken: state.googleAccessToken, sessionId: state.googleSession.id, folderId: state.importFolderId, folderName: folderName(state.importFolderId) }) });
   state.googleSession = null;
+  setProgress(true, 100);
   await loadData();
   byId("importStatus").textContent = `Imported ${result.media?.length || 0} Google Photos item(s).`;
+  window.setTimeout(() => setProgress(false), 900);
   return true;
 }
 
 function bindEvents() {
   byId("refreshButton").addEventListener("click", loadData);
-  byId("importButton").addEventListener("click", () => { state.importFolderId = state.folders[0]?.id || "default"; renderImport(); byId("importDialog").showModal(); });
+  byId("importButton").addEventListener("click", () => { state.importFolderId = state.currentFolderId || state.folders[0]?.id || "default"; renderImport(); byId("importDialog").showModal(); });
+  byId("emptyImportButton").addEventListener("click", () => byId("importButton").click());
   byId("settingsButton").addEventListener("click", () => { renderSettings(); byId("settingsDialog").showModal(); });
-  byId("closeImport").addEventListener("click", () => byId("importDialog").close());
-  byId("closeSettings").addEventListener("click", () => byId("settingsDialog").close());
-  byId("closeFolder").addEventListener("click", () => byId("folderDialog").close());
-  byId("closeViewer").addEventListener("click", () => byId("viewerDialog").close());
-  byId("closeCaption").addEventListener("click", () => byId("captionDialog").close());
-  byId("closeMove").addEventListener("click", () => byId("moveDialog").close());
+  for (const id of ["Import", "Settings", "Folder", "Viewer", "Caption", "Move"]) {
+    const button = byId(`close${id}`);
+    const dialog = byId(`${id.toLowerCase()}Dialog`);
+    if (button && dialog) button.addEventListener("click", () => dialog.close());
+  }
   byId("prevHero").addEventListener("click", () => changeCarousel(-1));
   byId("nextHero").addEventListener("click", () => changeCarousel(1));
-  byId("playToggle").addEventListener("click", async () => { state.carousel.playing = !state.carousel.playing; await api("/api/carousel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: state.carousel.mode, selectedIds: state.media.filter((item) => item.included_in_carousel).map((item) => item.id), playing: state.carousel.playing }) }); renderCarousel(); });
+  byId("playToggle").addEventListener("click", () => persistCarouselSettings({ playing: !state.carousel.playing }).catch(showError));
   byId("heroStage").addEventListener("click", (event) => { if (event.target.closest("button")) return; const item = getCarouselMedia()[state.carouselIndex]; if (item) openViewer(getCarouselMedia().map((m) => m.id), item.id); });
   byId("heroStage").addEventListener("touchstart", (event) => { state.touchStart = event.touches[0].clientX; }, { passive: true });
   byId("heroStage").addEventListener("touchend", (event) => { const delta = event.changedTouches[0].clientX - state.touchStart; if (Math.abs(delta) > 40) changeCarousel(delta > 0 ? -1 : 1); });
   byId("folderGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-folder]"); if (card) openFolder(card.dataset.folder); });
   byId("folderImportButton").addEventListener("click", () => { state.importFolderId = state.currentFolderId; renderImport(); byId("importDialog").showModal(); });
-  byId("mediaGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; if (state.selectedIds.size) toggleSelected(card.dataset.media); else openViewer(folderMedia(state.currentFolderId).map((item) => item.id), card.dataset.media); });
+  byId("mediaGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; if (state.longPressTriggered) { state.longPressTriggered = false; return; } if (state.selectedIds.size) toggleSelected(card.dataset.media); else openViewer(folderMedia(state.currentFolderId).map((item) => item.id), card.dataset.media); });
   byId("mediaGrid").addEventListener("contextmenu", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; event.preventDefault(); toggleSelected(card.dataset.media); });
+  byId("mediaGrid").addEventListener("pointerdown", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; clearTimeout(state.longPressTimer); state.longPressTriggered = false; state.longPressTimer = setTimeout(() => { state.longPressTriggered = true; toggleSelected(card.dataset.media); }, 520); });
+  byId("mediaGrid").addEventListener("pointerup", () => clearTimeout(state.longPressTimer));
+  byId("mediaGrid").addEventListener("pointerleave", () => clearTimeout(state.longPressTimer));
   byId("batchMove").addEventListener("click", () => openMoveDialog([...state.selectedIds]));
-  byId("batchDelete").addEventListener("click", () => deleteIds([...state.selectedIds]));
+  byId("batchDelete").addEventListener("click", () => deleteIds([...state.selectedIds]).catch(showError));
   byId("batchClear").addEventListener("click", () => { state.selectedIds.clear(); renderFolderDialog(state.currentFolderId); });
   byId("viewerPrev").addEventListener("click", () => changeViewer(-1));
   byId("viewerNext").addEventListener("click", () => changeViewer(1));
   byId("editCaptionButton").addEventListener("click", () => openCaptionEditor(state.viewerIds[state.viewerIndex]));
-  byId("toggleCarouselButton").addEventListener("click", () => toggleCarouselItem(state.viewerIds[state.viewerIndex]));
+  byId("toggleCarouselButton").addEventListener("click", () => toggleCarouselItem(state.viewerIds[state.viewerIndex]).catch(showError));
   byId("movePhotoButton").addEventListener("click", () => openMoveDialog([state.viewerIds[state.viewerIndex]]));
   byId("deletePhotoButton").addEventListener("click", async () => { await deleteIds([state.viewerIds[state.viewerIndex]]); byId("viewerDialog").close(); });
-  byId("modeControls").addEventListener("click", (event) => { const button = event.target.closest("[data-mode]"); if (button) saveCarouselMode(button.dataset.mode); });
+  byId("modeControls").addEventListener("click", (event) => { const button = event.target.closest("[data-mode]"); if (button) persistCarouselSettings({ mode: button.dataset.mode }).catch(showError); });
   byId("folderSourceList").addEventListener("click", (event) => { const button = event.target.closest("[data-source-folder]"); if (!button) return; state.currentFolderId = button.dataset.sourceFolder; renderSettings(); renderCarousel(); });
-  byId("selectedPhotoGrid").addEventListener("click", (event) => { const button = event.target.closest("[data-select-carousel]"); if (button) toggleCarouselItem(button.dataset.selectCarousel); });
-  byId("autoRotateInput").addEventListener("change", async (event) => { state.carousel.playing = event.target.checked; await api("/api/carousel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: state.carousel.mode, selectedIds: state.media.filter((item) => item.included_in_carousel).map((item) => item.id), playing: state.carousel.playing }) }); renderCarousel(); });
+  byId("selectedPhotoGrid").addEventListener("click", (event) => { const button = event.target.closest("[data-select-carousel]"); if (button) toggleCarouselItem(button.dataset.selectCarousel).catch(showError); });
+  byId("autoRotateInput").addEventListener("change", (event) => persistCarouselSettings({ playing: event.target.checked }).catch(showError));
+  byId("showCaptionsInput").addEventListener("change", (event) => { state.prefs.showCaptions = event.target.checked; savePrefs(); renderCarousel(); renderSettings(); });
+  byId("speedInput").addEventListener("input", (event) => { state.prefs.speed = Number(event.target.value); savePrefs(); renderCarousel(); renderSettings(); });
+  byId("glowInput").addEventListener("input", (event) => { state.prefs.glow = Number(event.target.value); savePrefs(); renderCarousel(); renderSettings(); });
   byId("importFolderList").addEventListener("click", (event) => { const button = event.target.closest("[data-import-folder]"); if (!button) return; state.importFolderId = button.dataset.importFolder; renderImport(); });
+  byId("createFolderButton").addEventListener("click", () => createFolder().catch(showError));
   byId("fileInput").addEventListener("change", (event) => uploadFiles([...event.target.files]).catch(showError));
   byId("connectGoogle").addEventListener("click", async () => { if (!(await maybeImportGoogleSelection())) await launchGooglePhotos(); });
+  const dropZone = byId("dropZone");
+  dropZone.addEventListener("dragover", (event) => { event.preventDefault(); dropZone.classList.add("dragging"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragging"));
+  dropZone.addEventListener("drop", (event) => { event.preventDefault(); dropZone.classList.remove("dragging"); uploadFiles([...event.dataTransfer.files]).catch(showError); });
   byId("saveCaption").addEventListener("click", () => saveCaption().catch(showError));
   byId("deleteCaption").addEventListener("click", () => deleteCaption().catch(showError));
   byId("moveFolderList").addEventListener("click", (event) => { const button = event.target.closest("[data-move-folder]"); if (!button) return; moveIds(JSON.parse(byId("moveFolderList").dataset.ids || "[]"), button.dataset.moveFolder).catch(showError); });
@@ -316,6 +392,7 @@ function bindEvents() {
 function showError(error) {
   console.error(error);
   const target = byId("importStatus");
+  setProgress(false);
   if (target && byId("importDialog").open) target.textContent = error.message || "Something went wrong.";
   else alert(error.message || "Something went wrong.");
 }

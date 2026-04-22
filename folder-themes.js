@@ -41,8 +41,44 @@
     renderThemeControls();
   }
 
+  function folderRotationIdsFromDb(folderId) {
+    const folder = folderById(folderId);
+    return Array.isArray(folder?.rotation_media_ids) ? folder.rotation_media_ids.filter(Boolean) : [];
+  }
+
   function selectedRotationIds(folderId) {
+    const dbIds = folderRotationIdsFromDb(folderId);
+    if (dbIds.length) return dbIds;
     return Array.isArray(rotationPrefs[folderId]) ? rotationPrefs[folderId].filter(Boolean) : [];
+  }
+
+  function setFolderRotationIds(folderId, ids) {
+    const folder = folderById(folderId);
+    if (folder) folder.rotation_media_ids = ids;
+    rotationPrefs[folderId] = ids;
+    saveRotationPrefs();
+  }
+
+  async function persistFolderRotation(folderId, ids) {
+    setFolderRotationIds(folderId, ids);
+    renderFolders();
+    renderFolderRotationPicker(folderId);
+    try {
+      const updated = await api(`/api/folders/${folderId}/rotation`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaIds: ids })
+      });
+      if (updated) {
+        const index = state.folders.findIndex((folder) => folder.id === updated.id);
+        if (index >= 0) state.folders[index] = updated;
+        setFolderRotationIds(folderId, updated.rotation_media_ids || []);
+        renderFolders();
+        renderFolderRotationPicker(folderId);
+      }
+    } catch (error) {
+      console.warn("Folder rotation saved locally until the database schema is updated.", error);
+    }
   }
 
   function folderRotationItems(folderId) {
@@ -163,7 +199,7 @@
     </div>`;
   }
 
-  function toggleFolderRotation(folderId, mediaId) {
+  async function toggleFolderRotation(folderId, mediaId) {
     const selected = selectedRotationIds(folderId).filter((id) => mediaById(id));
     const index = selected.indexOf(mediaId);
     if (index >= 0) selected.splice(index, 1);
@@ -172,17 +208,13 @@
       selected.shift();
       selected.push(mediaId);
     }
-    rotationPrefs[folderId] = selected;
-    saveRotationPrefs();
-    renderFolders();
-    renderFolderRotationPicker(folderId);
+    await persistFolderRotation(folderId, selected);
   }
 
-  function resetFolderRotation(folderId) {
+  async function resetFolderRotation(folderId) {
     delete rotationPrefs[folderId];
     saveRotationPrefs();
-    renderFolders();
-    renderFolderRotationPicker(folderId);
+    await persistFolderRotation(folderId, []);
   }
 
   function installThemeSettings() {
@@ -256,12 +288,12 @@
   document.addEventListener("click", (event) => {
     const toggle = event.target.closest("[data-folder-rotation-toggle]");
     if (toggle) {
-      toggleFolderRotation(toggle.dataset.folderId, toggle.dataset.folderRotationToggle);
+      toggleFolderRotation(toggle.dataset.folderId, toggle.dataset.folderRotationToggle).catch(showError);
       return;
     }
     const reset = event.target.closest("[data-folder-rotation-auto]");
     if (reset) {
-      resetFolderRotation(reset.dataset.folderRotationAuto);
+      resetFolderRotation(reset.dataset.folderRotationAuto).catch(showError);
       return;
     }
     const themeButton = event.target.closest("[data-theme-choice]");

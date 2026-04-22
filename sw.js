@@ -1,4 +1,4 @@
-const CACHE = "anniversary-memories-v8";
+const CACHE = "anniversary-memories-v9";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -7,6 +7,7 @@ const STATIC_ASSETS = [
   "/folder-themes.css",
   "/script.js",
   "/enhancements.js",
+  "/upload-scale.js",
   "/folder-themes.js",
   "/manifest.webmanifest",
   "/assets/icon-192.svg",

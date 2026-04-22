@@ -5,9 +5,10 @@ import { deleteObject, getObject, mediaKey, uploadObject } from "../services/r2.
 import { supabase } from "../services/supabase.js";
 
 const router = express.Router();
+const UPLOAD_TIMEOUT_MS = 180000;
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024, files: 40 },
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => {
     if (!file.mimetype.startsWith("image/")) return callback(null, false);
     callback(null, true);
@@ -15,6 +16,24 @@ const upload = multer({
 });
 
 const userId = () => process.env.APP_USER_ID || "anniversary";
+
+function singleImageUpload(req, res, next) {
+  req.setTimeout(UPLOAD_TIMEOUT_MS);
+  res.setTimeout(UPLOAD_TIMEOUT_MS);
+  upload.any()(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError) {
+      const messages = {
+        LIMIT_FILE_COUNT: "Upload one image per request. The app queue will continue with the next file.",
+        LIMIT_FILE_SIZE: "That image is too large for one request. Try a smaller export or screenshot.",
+        LIMIT_UNEXPECTED_FILE: "Unexpected upload field. Please refresh the app and retry."
+      };
+      const status = error.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+      return res.status(status).json({ ok: false, code: error.code, error: messages[error.code] || error.message });
+    }
+    next(error);
+  });
+}
 
 async function ensureFolder(folderId, name = "Memories") {
   const { data, error } = await supabase
@@ -125,41 +144,39 @@ router.patch("/folders/:id", async (req, res, next) => {
   }
 });
 
-router.post("/upload", upload.any(), async (req, res, next) => {
+router.post("/upload", singleImageUpload, async (req, res, next) => {
   try {
     const folderId = req.body.folderId || "default";
     await ensureFolder(folderId, req.body.folderName || "Memories");
 
-    const uploadedFiles = (req.files || []).filter((file) => file.mimetype.startsWith("image/"));
-    const created = [];
-    for (const file of uploadedFiles) {
-      const compressed = await compressImage(file);
-      const key = mediaKey({ userId: userId(), folderId, fileName: file.originalname });
-      const thumbnailKey = key.replace(/(\.[^.]+)?$/, "-thumb.jpg");
-      const [url, thumbnailUrl] = await Promise.all([
-        uploadObject({ key, body: compressed.main, contentType: compressed.contentType }),
-        uploadObject({ key: thumbnailKey, body: compressed.thumbnail, contentType: compressed.thumbnailContentType })
-      ]);
+    const file = (req.files || []).find((item) => item.mimetype.startsWith("image/"));
+    if (!file) return res.status(400).json({ ok: false, code: "NO_IMAGE", error: "No image file was provided." });
 
-      const { data, error } = await supabase
-        .from("media_items")
-        .insert({
-          user_id: userId(),
-          folder_id: folderId,
-          storage_key: key,
-          thumbnail_storage_key: thumbnailKey,
-          url,
-          thumbnail_url: thumbnailUrl,
-          caption: req.body.caption || null,
-          author: req.body.author || null,
-          metadata: compressed.metadata
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      created.push(data);
-    }
-    res.status(201).json({ media: created.map(withApiMediaUrls) });
+    const compressed = await compressImage(file);
+    const key = mediaKey({ userId: userId(), folderId, fileName: file.originalname });
+    const thumbnailKey = key.replace(/(\.[^.]+)?$/, "-thumb.jpg");
+    const [url, thumbnailUrl] = await Promise.all([
+      uploadObject({ key, body: compressed.main, contentType: compressed.contentType }),
+      uploadObject({ key: thumbnailKey, body: compressed.thumbnail, contentType: compressed.thumbnailContentType })
+    ]);
+
+    const { data, error } = await supabase
+      .from("media_items")
+      .insert({
+        user_id: userId(),
+        folder_id: folderId,
+        storage_key: key,
+        thumbnail_storage_key: thumbnailKey,
+        url,
+        thumbnail_url: thumbnailUrl,
+        caption: req.body.caption || null,
+        author: req.body.author || null,
+        metadata: { ...compressed.metadata, queueItemId: req.body.queueItemId || null }
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json({ ok: true, queueItemId: req.body.queueItemId || null, media: [withApiMediaUrls(data)] });
   } catch (error) {
     next(error);
   }

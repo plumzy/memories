@@ -126,7 +126,7 @@
   }
 
   async function ensurePreviewForItem(item) {
-    if (!item || item.previewDataUrl || previewWork.has(item.id) || item.status === "uploaded") return;
+    if (!item || item.previewDataUrl || previewWork.has(item.id) || item.status === "uploaded" || isMissingFileItem(item)) return;
     previewWork.add(item.id);
     try {
       const file = item.file || await loadQueueFile(item.id).catch(() => null);

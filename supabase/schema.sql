@@ -5,9 +5,13 @@ create table if not exists public.folders (
   user_id text not null,
   name text not null,
   cover_media_id text,
+  rotation_media_ids uuid[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.folders
+add column if not exists rotation_media_ids uuid[] not null default '{}';
 
 create table if not exists public.media_items (
   id uuid primary key default gen_random_uuid(),

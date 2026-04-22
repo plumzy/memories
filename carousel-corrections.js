@@ -24,7 +24,9 @@
     if (!section) return;
     section.classList.add("audio-compact");
     const intro = section.querySelector(".audio-top p");
-    if (intro) intro.textContent = "Background playlist for the carousel.";
+    if (intro && intro.textContent !== "Background playlist for the carousel.") {
+      intro.textContent = "Background playlist for the carousel.";
+    }
     const now = byId("audioNow");
     if (now && now.textContent.startsWith("Choose songs")) now.textContent = "Playing: no active song yet";
     if (!audioObserver) {

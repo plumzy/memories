@@ -11,6 +11,9 @@
   <link rel="stylesheet" href="/folder-themes.css">
   <link rel="stylesheet" href="/folder-bulk-actions.css">
   <link rel="stylesheet" href="/upload-recovery.css">
+  <link rel="stylesheet" href="/carousel-polish.css">
+  <link rel="stylesheet" href="/carousel-corrections.css">
+  <link rel="stylesheet" href="/carousel-upgrades.css">
 </head>
 <body>
   <main class="app-shell">
@@ -25,9 +28,9 @@
         <h1>Photographs We Can’t Miss to See</h1>
       </div>
       <div class="top-actions">
-        <button class="icon-text primary-action" id="importButton" type="button"><span>+</span> Import</button>
-        <button class="icon-button" id="installBtn" type="button" aria-label="Install app" title="Install app">I</button>
-        <button class="icon-button" id="settingsButton" type="button" aria-label="Open carousel controls" title="Carousel controls">*</button>
+        <button class="icon-text primary-action" id="importButton" type="button" aria-label="Import photos"><span>+</span> Import</button>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="Carousel controls" title="Carousel controls">▦</button>
+        <button class="icon-text install-action" id="installBtn" type="button" aria-label="Install app" title="Install app"><span>↓</span><span>Install</span></button>
       </div>
     </header>
 
@@ -236,7 +239,9 @@
   <script src="/enhancements.js" defer></script>
   <script src="/upload-scale.js" defer></script>
   <script src="/upload-recovery.js" defer></script>
+  <script id="carouselPolishScript" src="/carousel-polish.js" defer></script>
   <script src="/carousel-corrections.js" defer></script>
+  <script src="/carousel-upgrades.js" defer></script>
   <script src="/folder-themes.js" defer></script>
   <script src="/folder-size.js" defer></script>
   <script src="/folder-bulk-actions.js" defer></script>

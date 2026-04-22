@@ -1,0 +1,185 @@
+.folder-grid {
+  align-items: stretch;
+}
+.folder-card {
+  isolation: isolate;
+  backdrop-filter: blur(20px);
+  background: linear-gradient(145deg, rgba(255,255,255,0.32), rgba(243,231,255,0.18));
+}
+.folder-card::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.folder-card::after {
+  background: linear-gradient(180deg, rgba(49,34,71,0.02), rgba(49,34,71,0.18) 42%, rgba(49,34,71,0.72));
+}
+.folder-card .folder-copy {
+  padding: 12px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
+  border: 1px solid rgba(255,255,255,0.22);
+  backdrop-filter: blur(14px);
+}
+.folder-copy span {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--plum-700);
+  background: rgba(255,255,255,0.72);
+}
+.audio-section {
+  margin-top: 30px;
+  padding: 18px;
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255,255,255,0.58), rgba(243,231,255,0.52));
+  border: 1px solid var(--stroke);
+  box-shadow: 0 24px 56px rgba(90,54,130,0.16);
+  backdrop-filter: blur(18px);
+}
+.audio-top,
+.audio-controls,
+.audio-actions,
+.track-row,
+.duplicate-actions,
+.duplicate-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.audio-top {
+  margin-bottom: 14px;
+}
+.audio-top p,
+.track-meta,
+.duplicate-copy p {
+  font-size: 13px;
+}
+.audio-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.audio-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  max-height: 260px;
+  overflow: auto;
+}
+.track-row {
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(230,208,255,0.85);
+  box-shadow: 0 12px 28px rgba(90,54,130,0.08);
+}
+.track-row.active {
+  box-shadow: 0 0 0 2px rgba(149,104,232,0.24), 0 14px 34px rgba(90,54,130,0.14);
+}
+.track-name {
+  min-width: 0;
+}
+.track-name strong {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track-meta {
+  color: var(--muted);
+}
+.audio-pill {
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 999px;
+  color: var(--plum-700);
+  background: rgba(255,255,255,0.84);
+  border: 1px solid var(--lavender-200);
+  font-weight: 850;
+}
+.audio-pill.active {
+  color: var(--white);
+  background: var(--lavender-500);
+}
+.audio-now {
+  margin-top: 10px;
+  min-height: 22px;
+  text-align: center;
+  color: var(--plum-700);
+  font-weight: 800;
+}
+.audio-volume {
+  width: 120px;
+}
+.duplicate-dialog {
+  width: min(100vw - 22px, 760px);
+}
+.duplicate-list {
+  display: grid;
+  gap: 10px;
+  max-height: 330px;
+  overflow: auto;
+  margin: 14px 0;
+}
+.duplicate-card,
+.duplicate-review-row {
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.74);
+  border: 1px solid rgba(230,208,255,0.9);
+}
+.duplicate-card strong,
+.duplicate-review-row strong {
+  display: block;
+  color: var(--ink);
+}
+.duplicate-card span,
+.duplicate-review-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.duplicate-actions {
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 14px;
+}
+.duplicate-review-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.duplicate-review-controls button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--plum-700);
+  background: var(--white);
+  border: 1px solid var(--lavender-200);
+  font-size: 12px;
+  font-weight: 850;
+}
+.duplicate-review-controls button.active {
+  color: var(--white);
+  background: var(--lavender-500);
+}
+@media (max-width: 680px) {
+  .audio-top,
+  .audio-controls,
+  .track-row,
+  .duplicate-review-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .audio-actions,
+  .duplicate-review-controls {
+    justify-content: flex-start;
+  }
+}

@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { compressImage } from "../services/compression.js";
-import { deleteObject, getObject, mediaKey, uploadObject } from "../services/r2.js";
+import { deleteObject, getObject, getObjectSize, mediaKey, uploadObject } from "../services/r2.js";
 import { supabase } from "../services/supabase.js";
 
 const router = express.Router();
@@ -74,6 +74,54 @@ function withApiMediaUrls(item) {
   };
 }
 
+function storedSizeFromMetadata(metadata = {}) {
+  for (const key of ["storedSize", "storageSize", "compressedSize", "mainStoredSize"]) {
+    const value = Number(metadata[key] || 0);
+    if (value > 0) return value;
+  }
+  return 0;
+}
+
+async function mapWithLimit(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function withStoredSizeMetadata(item) {
+  const metadata = item.metadata || {};
+  if (storedSizeFromMetadata(metadata)) return item;
+  try {
+    const storedSize = await getObjectSize(item.storage_key);
+    if (!storedSize) return item;
+    const nextMetadata = { ...metadata, storedSize };
+    supabase
+      .from("media_items")
+      .update({ metadata: nextMetadata })
+      .eq("id", item.id)
+      .eq("user_id", userId())
+      .then(({ error }) => {
+        if (error) console.warn("Could not persist media stored size", error);
+      });
+    return { ...item, metadata: nextMetadata };
+  } catch (error) {
+    console.warn("Could not read media object size", error);
+    return item;
+  }
+}
+
+async function enrichMediaSizes(media = []) {
+  return mapWithLimit(media, 6, withStoredSizeMetadata);
+}
+
 router.get("/media", async (_req, res, next) => {
   try {
     const [{ data: folders, error: folderError }, { data: media, error: mediaError }, { data: carousel, error: carouselError }] = await Promise.all([
@@ -84,7 +132,8 @@ router.get("/media", async (_req, res, next) => {
     if (folderError) throw folderError;
     if (mediaError) throw mediaError;
     if (carouselError) throw carouselError;
-    res.json({ folders, media: (media || []).map(withApiMediaUrls), carousel });
+    const sizedMedia = await enrichMediaSizes(media || []);
+    res.json({ folders, media: sizedMedia.map(withApiMediaUrls), carousel });
   } catch (error) {
     next(error);
   }

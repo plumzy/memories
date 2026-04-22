@@ -144,6 +144,35 @@ router.patch("/folders/:id", async (req, res, next) => {
   }
 });
 
+router.patch("/folders/:id/rotation", async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body.mediaIds) ? req.body.mediaIds.slice(0, 5).filter(Boolean) : [];
+    if (ids.length) {
+      const { data: validMedia, error: validError } = await supabase
+        .from("media_items")
+        .select("id")
+        .eq("user_id", userId())
+        .eq("folder_id", req.params.id)
+        .in("id", ids);
+      if (validError) throw validError;
+      const validIds = new Set((validMedia || []).map((item) => item.id));
+      const invalid = ids.filter((id) => !validIds.has(id));
+      if (invalid.length) return res.status(400).json({ error: "Rotation images must belong to this folder." });
+    }
+    const { data, error } = await supabase
+      .from("folders")
+      .update({ rotation_media_ids: ids })
+      .eq("id", req.params.id)
+      .eq("user_id", userId())
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/upload", singleImageUpload, async (req, res, next) => {
   try {
     const folderId = req.body.folderId || "default";

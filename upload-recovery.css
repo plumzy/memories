@@ -1,3 +1,15 @@
+.upload-drop {
+  text-align: left;
+}
+.upload-drop .drop-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.upload-drop .primary-button {
+  flex: 0 0 auto;
+  align-self: center;
+  white-space: nowrap;
+}
 .queue-item-preview {
   grid-template-columns: 58px minmax(0, 1fr) auto;
   align-items: center;
@@ -53,6 +65,15 @@
   color: var(--danger) !important;
   background: rgba(255,230,241,0.86) !important;
   border-color: var(--blush-200) !important;
+}
+@media (max-width: 820px) {
+  .upload-drop {
+    align-items: center;
+    text-align: center;
+  }
+  .upload-drop .primary-button {
+    width: min(100%, 220px);
+  }
 }
 @media (max-width: 560px) {
   .queue-item-preview {

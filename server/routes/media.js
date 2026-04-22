@@ -160,6 +160,17 @@ router.post("/upload", singleImageUpload, async (req, res, next) => {
       uploadObject({ key: thumbnailKey, body: compressed.thumbnail, contentType: compressed.thumbnailContentType })
     ]);
 
+    const metadata = {
+      ...compressed.metadata,
+      queueItemId: req.body.queueItemId || null,
+      fileHash: req.body.fileHash || null,
+      duplicateSignature: req.body.duplicateSignature || null,
+      originalLastModified: req.body.originalLastModified ? Number(req.body.originalLastModified) : null,
+      originalWidth: req.body.originalWidth ? Number(req.body.originalWidth) : compressed.metadata.width,
+      originalHeight: req.body.originalHeight ? Number(req.body.originalHeight) : compressed.metadata.height,
+      duplicateAction: req.body.duplicateAction || null
+    };
+
     const { data, error } = await supabase
       .from("media_items")
       .insert({
@@ -171,7 +182,7 @@ router.post("/upload", singleImageUpload, async (req, res, next) => {
         thumbnail_url: thumbnailUrl,
         caption: req.body.caption || null,
         author: req.body.author || null,
-        metadata: { ...compressed.metadata, queueItemId: req.body.queueItemId || null }
+        metadata
       })
       .select()
       .single();

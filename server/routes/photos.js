@@ -10,6 +10,7 @@ const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
 const PICKER_API = "https://photospicker.googleapis.com/v1";
 const PICKER_SCOPE = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly";
+const DUPLICATE_FOLDER_NAME = "DUPLICATE UPLOADS";
 
 function requireGoogleEnv() {
   const required = ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"];
@@ -19,6 +20,45 @@ function requireGoogleEnv() {
     err.status = 500;
     throw err;
   }
+}
+
+async function ensureFolder(folderId, name) {
+  const { data, error } = await supabase
+    .from("folders")
+    .upsert({ id: folderId, user_id: userId(), name }, { onConflict: "id" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function ensureDuplicateFolder() {
+  const { data: existing, error: findError } = await supabase
+    .from("folders")
+    .select("*")
+    .eq("user_id", userId())
+    .eq("name", DUPLICATE_FOLDER_NAME)
+    .limit(1)
+    .maybeSingle();
+  if (findError) throw findError;
+  if (existing) return existing;
+  const { data, error } = await supabase
+    .from("folders")
+    .insert({ user_id: userId(), name: DUPLICATE_FOLDER_NAME })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+function withApiMediaUrls(item) {
+  return {
+    ...item,
+    r2_url: item.url,
+    r2_thumbnail_url: item.thumbnail_url,
+    url: `/api/media/${item.id}/content`,
+    thumbnail_url: `/api/media/${item.id}/thumbnail`
+  };
 }
 
 router.post("/google-photos/session", async (req, res, next) => {
@@ -91,7 +131,7 @@ router.get("/google-photos/callback", async (req, res, next) => {
 
 router.post("/google-photos/import", async (req, res, next) => {
   try {
-    const { accessToken, sessionId, mediaItems: postedItems, folderId = "google-photos", folderName = "Google Photos" } = req.body;
+    const { accessToken, sessionId, mediaItems: postedItems, folderId = "google-photos", folderName = "Google Photos", duplicateAction } = req.body;
     if (!accessToken) return res.status(400).json({ error: "accessToken is required." });
 
     let mediaItems = postedItems;
@@ -105,9 +145,38 @@ router.post("/google-photos/import", async (req, res, next) => {
     }
     if (!Array.isArray(mediaItems)) return res.status(400).json({ error: "sessionId or mediaItems is required." });
 
-    await supabase.from("folders").upsert({ id: folderId, user_id: userId(), name: folderName }, { onConflict: "id" });
+    const googleIds = mediaItems.map((item) => item.id).filter(Boolean);
+    const { data: existingMedia, error: existingError } = await supabase
+      .from("media_items")
+      .select("id, folder_id, metadata")
+      .eq("user_id", userId());
+    if (existingError) throw existingError;
+    const existingGoogleIds = new Set((existingMedia || []).map((item) => item.metadata?.googlePhotosId).filter(Boolean));
+    const duplicates = mediaItems.filter((item) => item.id && existingGoogleIds.has(item.id));
+
+    if (duplicates.length && !duplicateAction) {
+      return res.status(409).json({
+        code: "DUPLICATES_FOUND",
+        error: "Some Google Photos selections already exist.",
+        duplicates: duplicates.map((item) => ({ id: item.id, fileName: item.filename || `${item.id}.jpg` }))
+      });
+    }
+
+    await ensureFolder(folderId, folderName);
+    const duplicateFolder = duplicateAction === "duplicates" ? await ensureDuplicateFolder() : null;
     const imported = [];
+    const skipped = [];
+
     for (const item of mediaItems) {
+      const isDuplicate = item.id && existingGoogleIds.has(item.id);
+      if (isDuplicate && duplicateAction === "skip") {
+        skipped.push(item.id);
+        continue;
+      }
+      const targetFolderId = isDuplicate && duplicateFolder ? duplicateFolder.id : folderId;
+      const targetFolderName = isDuplicate && duplicateFolder ? duplicateFolder.name : folderName;
+      await ensureFolder(targetFolderId, targetFolderName);
+
       const baseUrl = item.baseUrl || item.mediaFile?.baseUrl;
       if (!baseUrl) continue;
       const photoRes = await fetch(`${baseUrl}=w2200-h2200`, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -117,10 +186,10 @@ router.post("/google-photos/import", async (req, res, next) => {
         buffer,
         size: buffer.length,
         mimetype: photoRes.headers.get("content-type") || "image/jpeg",
-        originalname: `${item.id || randomUUID()}.jpg`
+        originalname: item.filename || `${item.id || randomUUID()}.jpg`
       };
       const compressed = await compressImage(file);
-      const key = mediaKey({ userId: userId(), folderId, fileName: file.originalname });
+      const key = mediaKey({ userId: userId(), folderId: targetFolderId, fileName: file.originalname });
       const thumbnailKey = key.replace(/(\.[^.]+)?$/, "-thumb.jpg");
       const [url, thumbnailUrl] = await Promise.all([
         uploadObject({ key, body: compressed.main, contentType: compressed.contentType }),
@@ -130,20 +199,20 @@ router.post("/google-photos/import", async (req, res, next) => {
         .from("media_items")
         .insert({
           user_id: userId(),
-          folder_id: folderId,
+          folder_id: targetFolderId,
           storage_key: key,
           thumbnail_storage_key: thumbnailKey,
           url,
           thumbnail_url: thumbnailUrl,
           caption: item.description || null,
-          metadata: { ...compressed.metadata, googlePhotosId: item.id }
+          metadata: { ...compressed.metadata, googlePhotosId: item.id, duplicateAction: isDuplicate ? duplicateAction : null }
         })
         .select()
         .single();
       if (error) throw error;
-      imported.push(data);
+      imported.push(withApiMediaUrls(data));
     }
-    res.status(201).json({ media: imported });
+    res.status(201).json({ media: imported, duplicates: duplicates.map((item) => item.id), skipped });
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,4 @@
-const CACHE = "anniversary-memories-v6";
+const CACHE = "anniversary-memories-v7";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

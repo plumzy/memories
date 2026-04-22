@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import audioRoutes from "./routes/audio.js";
 import mediaRoutes from "./routes/media.js";
 import photosRoutes from "./routes/photos.js";
 
@@ -20,6 +21,7 @@ app.use((req, res, next) => {
 
 app.use("/api", mediaRoutes);
 app.use("/api", photosRoutes);
+app.use("/api", audioRoutes);
 app.use(express.static(root, {
   extensions: ["html"],
   setHeaders(res, filePath) {

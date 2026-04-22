@@ -96,30 +96,32 @@ async function mapWithLimit(items, limit, mapper) {
   return results;
 }
 
-async function withStoredSizeMetadata(item) {
+async function backfillStoredSize(item) {
   const metadata = item.metadata || {};
-  if (storedSizeFromMetadata(metadata)) return item;
+  if (storedSizeFromMetadata(metadata)) return;
   try {
     const storedSize = await getObjectSize(item.storage_key);
-    if (!storedSize) return item;
+    if (!storedSize) return;
     const nextMetadata = { ...metadata, storedSize };
-    supabase
+    const { error } = await supabase
       .from("media_items")
       .update({ metadata: nextMetadata })
       .eq("id", item.id)
-      .eq("user_id", userId())
-      .then(({ error }) => {
-        if (error) console.warn("Could not persist media stored size", error);
-      });
-    return { ...item, metadata: nextMetadata };
+      .eq("user_id", userId());
+    if (error) console.warn("Could not persist media stored size", error);
   } catch (error) {
     console.warn("Could not read media object size", error);
-    return item;
   }
 }
 
-async function enrichMediaSizes(media = []) {
-  return mapWithLimit(media, 6, withStoredSizeMetadata);
+function backfillMissingStoredSizes(media = []) {
+  const missing = media.filter((item) => !storedSizeFromMetadata(item.metadata || {})).slice(0, 30);
+  if (!missing.length) return;
+  setTimeout(() => {
+    mapWithLimit(missing, 3, backfillStoredSize).catch((error) => {
+      console.warn("Could not backfill media stored sizes", error);
+    });
+  }, 0);
 }
 
 router.get("/media", async (_req, res, next) => {
@@ -132,8 +134,9 @@ router.get("/media", async (_req, res, next) => {
     if (folderError) throw folderError;
     if (mediaError) throw mediaError;
     if (carouselError) throw carouselError;
-    const sizedMedia = await enrichMediaSizes(media || []);
-    res.json({ folders, media: sizedMedia.map(withApiMediaUrls), carousel });
+    const mediaItems = media || [];
+    backfillMissingStoredSizes(mediaItems);
+    res.json({ folders, media: mediaItems.map(withApiMediaUrls), carousel });
   } catch (error) {
     next(error);
   }

@@ -1,0 +1,79 @@
+.queue-item-preview {
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+}
+.queue-preview {
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255,255,255,0.78), rgba(230,208,255,0.58));
+  border: 1px solid rgba(255,255,255,0.78);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.74), 0 10px 24px rgba(90,54,130,0.1);
+}
+.queue-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.queue-preview-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.queue-preview-empty span {
+  width: 26px;
+  height: 26px;
+  border-radius: 46% 46% 52% 52%;
+  background: radial-gradient(circle at 35% 25%, var(--blush-200), var(--lavender-300));
+  opacity: 0.72;
+}
+.queue-item.missing-file {
+  border-color: rgba(217,75,112,0.34);
+  background: linear-gradient(145deg, rgba(255,255,255,0.84), rgba(255,230,241,0.62));
+}
+.queue-item.missing-file .queue-title span {
+  color: var(--danger);
+  font-weight: 750;
+}
+.queue-item-actions button[disabled] {
+  opacity: 0.44;
+  cursor: not-allowed;
+  transform: none;
+}
+.queue-item-actions [data-queue-reupload] {
+  color: var(--white);
+  background: linear-gradient(135deg, var(--lavender-500), var(--lavender-600));
+  border-color: transparent;
+  box-shadow: 0 10px 20px rgba(117,73,197,0.18);
+}
+.danger-soft {
+  color: var(--danger) !important;
+  background: rgba(255,230,241,0.86) !important;
+  border-color: var(--blush-200) !important;
+}
+@media (max-width: 560px) {
+  .queue-item-preview {
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .queue-preview {
+    width: 54px;
+    height: 54px;
+    border-radius: 15px;
+  }
+  .queue-item-preview .queue-item-actions,
+  .queue-item-preview .queue-meter {
+    grid-column: 1 / -1;
+  }
+  .queue-item-preview .queue-item-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+    width: 100%;
+  }
+  .queue-item-preview .queue-item-actions button {
+    min-height: 38px;
+  }
+}

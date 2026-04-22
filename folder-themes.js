@@ -110,10 +110,15 @@
     cards.forEach((card) => folderObserver.observe(card));
   }
 
+  function escapeFolderSelector(folderId) {
+    if (window.CSS?.escape) return CSS.escape(folderId);
+    return String(folderId).replace(/["\\]/g, "\\$&");
+  }
+
   function advanceVisibleFolders() {
     if (document.hidden) return;
     visibleFolders.forEach((folderId) => {
-      const card = document.querySelector(`.rotating-folder-card[data-folder="${CSS.escape(folderId)}"]`);
+      const card = document.querySelector(`.rotating-folder-card[data-folder="${escapeFolderSelector(folderId)}"]`);
       if (!card || Number(card.dataset.rotationCount || 0) < 2) return;
       const images = [...card.querySelectorAll(".folder-rotation-img")];
       if (images.length < 2) return;
@@ -127,7 +132,7 @@
     const mediaGrid = byId("mediaGrid");
     if (!mediaGrid) return;
     const folder = folderById(folderId);
-    const items = folderMedia(folderId).slice(0, 24);
+    const items = folderMedia(folderId);
     let panel = byId("folderRotationPanel");
     if (!panel) {
       panel = document.createElement("section");
@@ -142,14 +147,18 @@
     panel.hidden = false;
     const selected = selectedRotationIds(folderId).filter((id) => items.some((item) => item.id === id));
     const selectedSet = new Set(selected);
+    const folderLabel = folder ? escapeHtml(folder.name) : "This folder";
+    const modeCopy = selected.length
+      ? `${selected.length} selected. Tap images to add or remove them from the folder card rotation.`
+      : `Auto mode uses the first ${Math.min(ROTATION_LIMIT, items.length)} thumbnails. Tap any image below to customize.`;
     panel.innerHTML = `<div class="folder-rotation-head">
-      <div><label>Folder thumbnail rotation</label><p>${folder ? escapeHtml(folder.name) : "This folder"} uses ${selected.length ? "your selected thumbnails" : "the first few thumbnails"}. Choose up to ${ROTATION_LIMIT}.</p></div>
+      <div><label>Folder thumbnail rotation</label><p>${folderLabel} shows the full folder library here. ${modeCopy}</p></div>
       <button class="secondary-button" type="button" data-folder-rotation-auto="${folderId}">Auto</button>
     </div>
-    <div class="folder-rotation-grid">
+    <div class="folder-rotation-grid" aria-label="Choose folder rotation images">
       ${items.map((item) => {
         const order = selected.indexOf(item.id) + 1;
-        return `<button class="folder-rotation-choice ${selectedSet.has(item.id) ? "active" : ""}" type="button" data-folder-rotation-toggle="${item.id}" data-folder-id="${folderId}" data-order="${order > 0 ? order : ""}"><img src="${thumbUrl(item)}" alt=""></button>`;
+        return `<button class="folder-rotation-choice ${selectedSet.has(item.id) ? "active" : ""}" type="button" data-folder-rotation-toggle="${item.id}" data-folder-id="${folderId}" data-order="${order > 0 ? order : ""}" aria-label="${selectedSet.has(item.id) ? "Remove from" : "Add to"} folder rotation"><img src="${thumbUrl(item)}" alt="" loading="lazy" decoding="async"></button>`;
       }).join("")}
     </div>`;
   }

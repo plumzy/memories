@@ -20,6 +20,20 @@
     renderFolderDialog(state.currentFolderId);
   }
 
+  function decorateSelectableCards() {
+    const grid = byId("mediaGrid");
+    if (!grid) return;
+    grid.classList.toggle("bulk-selecting", Boolean(state.bulkSelectionMode));
+    if (!state.bulkSelectionMode) return;
+    grid.querySelectorAll("[data-media]").forEach((card) => {
+      if (card.querySelector(".check-badge")) return;
+      const badge = document.createElement("span");
+      badge.className = "check-badge soft";
+      badge.textContent = "+";
+      card.appendChild(badge);
+    });
+  }
+
   function renderBulkToolbar(folderId) {
     const batchBar = byId("batchBar");
     if (!batchBar) return;
@@ -34,6 +48,7 @@
 
     if (!items.length) {
       toolbar.hidden = true;
+      decorateSelectableCards();
       return;
     }
 
@@ -52,6 +67,7 @@
 
     batchBar.classList.toggle("show", selectedCount > 0);
     byId("batchCount").textContent = `${selectedCount} selected`;
+    decorateSelectableCards();
   }
 
   const baseRenderFolderDialog = renderFolderDialog;
@@ -101,6 +117,11 @@
     if (event.key === "Escape" && state.bulkSelectionMode) {
       setBulkSelectionMode(false);
     }
+  });
+
+  byId("folderDialog")?.addEventListener("close", () => {
+    state.bulkSelectionMode = false;
+    state.selectedIds.clear();
   });
 
   if (byId("folderDialog")?.open && state.currentFolderId) renderFolderDialog(state.currentFolderId);

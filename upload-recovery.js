@@ -387,4 +387,12 @@
     ensureRecoveryControls();
     renderUploadQueue();
   }, 900);
+
+  if (!document.getElementById("carouselPolishScript")) {
+    const script = document.createElement("script");
+    script.id = "carouselPolishScript";
+    script.src = "/carousel-polish.js";
+    script.defer = true;
+    document.body.appendChild(script);
+  }
 })();

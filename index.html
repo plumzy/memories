@@ -158,7 +158,7 @@
         <button class="icon-button ghost" id="closeImport" type="button" aria-label="Close import">x</button>
         <div>
           <h2>Import memories</h2>
-          <p>Queue up to 500 images. Each photo uploads one at a time through the server compression and thumbnail pipeline.</p>
+          <p>Queue up to 2000 images. Each photo uploads through a small, resumable server compression and thumbnail pipeline.</p>
         </div>
         <span></span>
       </header>
@@ -173,7 +173,7 @@
       <section class="control-card upload-drop" id="dropZone">
         <div class="drop-copy">
           <strong>Device photos</strong>
-          <p>Drop images here or choose up to 500 files. The queue safely resumes after reloads, network changes, or app pauses.</p>
+          <p>Drop images here or choose up to 2000 files. The queue safely resumes after reloads, network changes, or app pauses.</p>
         </div>
         <label class="primary-button">Choose files<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
       </section>
@@ -232,6 +232,7 @@
 
   <script src="/script.js" defer></script>
   <script src="/enhancements.js" defer></script>
+  <script src="/upload-scale.js" defer></script>
   <script src="/folder-themes.js" defer></script>
 </body>
 </html>

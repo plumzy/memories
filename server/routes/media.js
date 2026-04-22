@@ -51,7 +51,7 @@ async function findMediaItem(id) {
     .select("*")
     .eq("id", id)
     .eq("user_id", userId())
-    .single();
+    .maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -124,6 +124,44 @@ function backfillMissingStoredSizes(media = []) {
   }, 0);
 }
 
+function normalizeIds(ids = []) {
+  return [...new Set((Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "").trim()).filter(Boolean))];
+}
+
+async function deleteMediaItemsByIds(ids) {
+  const mediaIds = normalizeIds(ids);
+  if (!mediaIds.length) return { deleted: [], missingIds: [] };
+
+  const { data: items, error: findError } = await supabase
+    .from("media_items")
+    .select("*")
+    .eq("user_id", userId())
+    .in("id", mediaIds);
+  if (findError) throw findError;
+
+  const foundItems = items || [];
+  const foundIds = foundItems.map((item) => item.id);
+  const foundSet = new Set(foundIds);
+  const missingIds = mediaIds.filter((id) => !foundSet.has(id));
+
+  await Promise.allSettled(foundItems.flatMap((item) => [
+    deleteObject(item.storage_key),
+    deleteObject(item.thumbnail_storage_key)
+  ]));
+
+  if (!foundIds.length) return { deleted: [], missingIds };
+
+  const { data: deletedRows, error: deleteError } = await supabase
+    .from("media_items")
+    .delete()
+    .eq("user_id", userId())
+    .in("id", foundIds)
+    .select("id, folder_id, storage_key, thumbnail_storage_key");
+  if (deleteError) throw deleteError;
+
+  return { deleted: deletedRows || [], missingIds };
+}
+
 router.get("/media", async (_req, res, next) => {
   try {
     const [{ data: folders, error: folderError }, { data: media, error: mediaError }, { data: carousel, error: carouselError }] = await Promise.all([
@@ -145,6 +183,7 @@ router.get("/media", async (_req, res, next) => {
 router.get("/media/:id/content", async (req, res, next) => {
   try {
     const item = await findMediaItem(req.params.id);
+    if (!item) return res.status(404).json({ error: "Media item was not found." });
     const object = await getObject(item.storage_key);
     streamR2Object(res, object, "image/jpeg");
   } catch (error) {
@@ -155,6 +194,7 @@ router.get("/media/:id/content", async (req, res, next) => {
 router.get("/media/:id/thumbnail", async (req, res, next) => {
   try {
     const item = await findMediaItem(req.params.id);
+    if (!item) return res.status(404).json({ error: "Media item was not found." });
     const key = item.thumbnail_storage_key || item.storage_key;
     const object = await getObject(key);
     streamR2Object(res, object, "image/jpeg");
@@ -294,13 +334,20 @@ router.patch("/media/:id", async (req, res, next) => {
   }
 });
 
+router.post("/media/delete", async (req, res, next) => {
+  try {
+    const { deleted, missingIds } = await deleteMediaItemsByIds(req.body.mediaIds || req.body.ids || []);
+    res.json({ ok: true, deleted, missingIds });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.delete("/media/:id", async (req, res, next) => {
   try {
-    const item = await findMediaItem(req.params.id);
-    await Promise.all([deleteObject(item.storage_key), deleteObject(item.thumbnail_storage_key)]);
-    const { error } = await supabase.from("media_items").delete().eq("id", req.params.id).eq("user_id", userId());
-    if (error) throw error;
-    res.json({ ok: true });
+    const { deleted, missingIds } = await deleteMediaItemsByIds([req.params.id]);
+    if (!deleted.length && missingIds.length) return res.status(404).json({ ok: false, error: "Media item was not found.", missingIds });
+    res.json({ ok: true, deleted, missingIds });
   } catch (error) {
     next(error);
   }

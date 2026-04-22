@@ -253,6 +253,28 @@ dialog.duplicate-dialog {
   flex: 1 1 180px;
 }
 
+#folderSubtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.folder-size-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--plum-700);
+  background: rgba(255,255,255,0.58);
+  border: 1px solid rgba(255,255,255,0.74);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 20px rgba(90,54,130,0.08);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .folder-card.rotating-folder-card {
   height: 268px;
   padding: 0;

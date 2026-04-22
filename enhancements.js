@@ -1,15 +1,14 @@
 (() => {
   const DUPLICATE_FOLDER_NAME = "DUPLICATE UPLOADS";
   const AUDIO_PREFS_KEY = "lavender-memories-audio-v1";
-  const originalUploadWithProgress = uploadWithProgress;
-  const originalMaybeImportGoogleSelection = maybeImportGoogleSelection;
+  const audioPrefs = loadAudioPrefs();
 
   const audioState = {
     tracks: [],
     index: 0,
     playing: false,
-    mode: loadAudioPrefs().mode,
-    volume: loadAudioPrefs().volume,
+    mode: audioPrefs.mode,
+    volume: audioPrefs.volume,
     element: new Audio()
   };
   audioState.element.volume = audioState.volume;
@@ -35,7 +34,7 @@
   }
 
   async function hashFile(file) {
-    if (!crypto?.subtle) return null;
+    if (!window.crypto?.subtle) return null;
     const buffer = await file.arrayBuffer();
     return bufferToHex(await crypto.subtle.digest("SHA-256", buffer));
   }
@@ -60,6 +59,7 @@
     const [fileHash, dimensions] = await Promise.all([hashFile(file), imageDimensions(file)]);
     const name = normalizeName(file.name);
     return {
+      reviewId: createQueueId(),
       file,
       name,
       fileHash,
@@ -83,9 +83,10 @@
       const width = Number(meta.originalWidth || meta.width || 0);
       const height = Number(meta.originalHeight || meta.height || 0);
       if (meta.fileHash) hashes.add(meta.fileHash);
+      if (meta.googlePhotosId) hashes.add(`google:${meta.googlePhotosId}`);
+      if (meta.duplicateSignature) dimensions.add(meta.duplicateSignature);
       if (name && size) fallback.add(`${name}|${size}`);
       if (name && size && width && height) dimensions.add(`${name}|${size}|${width}x${height}`);
-      if (meta.googlePhotosId) hashes.add(`google:${meta.googlePhotosId}`);
     }
     return { hashes, fallback, dimensions };
   }
@@ -156,64 +157,79 @@
         <span></span>
       </header>
       <div class="duplicate-list" id="duplicateList"></div>
-      <div class="duplicate-actions" id="duplicateBatchActions">
-        <button class="secondary-button" data-duplicate-action="skip" type="button">Skip all duplicates</button>
-        <button class="primary-button" data-duplicate-action="duplicates" type="button">Send all to DUPLICATE UPLOADS</button>
-        <button class="secondary-button" data-duplicate-action="review" type="button">Review one by one</button>
-      </div>
+      <div class="duplicate-actions" id="duplicateBatchActions"></div>
     </div>`;
     document.body.appendChild(dialog);
     dialog.querySelector("#closeDuplicateDialog").addEventListener("click", () => dialog.close("cancel"));
     return dialog;
   }
 
-  function askDuplicateAction(duplicates) {
+  function duplicateFileName(item) {
+    return item.file?.name || item.fileName || item.id || "Photo";
+  }
+
+  function duplicateFileSize(item) {
+    return item.file?.size ? ` · ${fileSizeLabel(item.file.size)}` : "";
+  }
+
+  function askDuplicateAction(duplicates, options = {}) {
+    const allowNormal = options.allowNormal !== false;
     const dialog = ensureDuplicateDialog();
     const list = dialog.querySelector("#duplicateList");
     const summary = dialog.querySelector("#duplicateSummary");
     const actions = dialog.querySelector("#duplicateBatchActions");
-    const choices = new Map(duplicates.map((item) => [item.name, "skip"]));
+    const choices = new Map(duplicates.map((item) => [item.reviewId, "skip"]));
     summary.textContent = duplicates.length === 1
       ? "This photo appears to already be in your gallery."
       : `${duplicates.length} photos appear to already be in your gallery.`;
-    list.innerHTML = duplicates.map((item) => `<div class="duplicate-card"><strong>${escapeHtml(item.file.name || "Photo")}</strong><span>${fileSizeLabel(item.file.size || 0)} · likely duplicate</span></div>`).join("");
+    list.innerHTML = duplicates.map((item) => `<div class="duplicate-card"><strong>${escapeHtml(duplicateFileName(item))}</strong><span>Likely duplicate${duplicateFileSize(item)}</span></div>`).join("");
     actions.innerHTML = `<button class="secondary-button" data-duplicate-action="skip" type="button">Skip all duplicates</button>
       <button class="primary-button" data-duplicate-action="duplicates" type="button">Send all to DUPLICATE UPLOADS</button>
       <button class="secondary-button" data-duplicate-action="review" type="button">Review one by one</button>`;
 
     return new Promise((resolve) => {
+      let settled = false;
+      const settle = (value) => {
+        if (settled) return;
+        settled = true;
+        dialog.close();
+        resolve(value);
+      };
+
       actions.onclick = (event) => {
         const button = event.target.closest("[data-duplicate-action]");
         if (!button) return;
         const action = button.dataset.duplicateAction;
-        if (action !== "review") {
-          dialog.close();
-          resolve({ action });
+        if (action === "finish-review") {
+          settle({ action: "review", choices });
           return;
         }
-        list.innerHTML = duplicates.map((item) => `<div class="duplicate-review-row" data-review-name="${escapeHtml(item.name)}">
-          <div><strong>${escapeHtml(item.file.name || "Photo")}</strong><span>${fileSizeLabel(item.file.size || 0)}</span></div>
+        if (action !== "review") {
+          settle({ action });
+          return;
+        }
+        list.innerHTML = duplicates.map((item) => `<div class="duplicate-review-row" data-review-id="${item.reviewId}">
+          <div><strong>${escapeHtml(duplicateFileName(item))}</strong><span>Already in gallery${duplicateFileSize(item)}</span></div>
           <div class="duplicate-review-controls">
             <button class="active" data-review-choice="skip" type="button">Skip</button>
             <button data-review-choice="duplicates" type="button">DUPLICATE UPLOADS</button>
-            <button data-review-choice="normal" type="button">Upload anyway</button>
+            ${allowNormal ? `<button data-review-choice="normal" type="button">Upload anyway</button>` : ""}
           </div>
         </div>`).join("");
         actions.innerHTML = `<button class="primary-button" data-duplicate-action="finish-review" type="button">Apply choices</button>`;
       };
+
       list.onclick = (event) => {
         const button = event.target.closest("[data-review-choice]");
-        const row = event.target.closest("[data-review-name]");
+        const row = event.target.closest("[data-review-id]");
         if (!button || !row) return;
-        choices.set(row.dataset.reviewName, button.dataset.reviewChoice);
+        choices.set(row.dataset.reviewId, button.dataset.reviewChoice);
         row.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
       };
-      actions.addEventListener("click", function finish(event) {
-        const button = event.target.closest('[data-duplicate-action="finish-review"]');
-        if (!button) return;
-        actions.removeEventListener("click", finish);
-        dialog.close();
-        resolve({ action: "review", choices });
+
+      dialog.addEventListener("close", function onClose() {
+        dialog.removeEventListener("close", onClose);
+        if (!settled) settle({ action: "skip" });
       });
       dialog.showModal();
     });
@@ -247,7 +263,7 @@
       const normal = [];
       const duplicateFolderItems = [];
       for (const item of duplicates) {
-        const choice = decision.choices.get(item.name) || "skip";
+        const choice = decision.choices.get(item.reviewId) || "skip";
         if (choice === "normal") normal.push(item);
         if (choice === "duplicates") duplicateFolderItems.push(item);
       }
@@ -308,11 +324,21 @@
     let response = await fetch("/api/google-photos/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     let result = await response.json().catch(() => ({}));
     if (response.status === 409 && result.code === "DUPLICATES_FOUND") {
-      const fakeDuplicates = (result.duplicates || []).map((item) => ({ name: item.id, file: { name: item.fileName || item.id, size: 0 } }));
-      const decision = await askDuplicateAction(fakeDuplicates);
+      const googleDuplicates = (result.duplicates || []).map((item) => ({
+        reviewId: item.id || createQueueId(),
+        id: item.id,
+        fileName: item.fileName || item.id || "Google Photos item"
+      }));
+      const decision = await askDuplicateAction(googleDuplicates, { allowNormal: false });
       if (decision.action === "skip") body.duplicateAction = "skip";
       if (decision.action === "duplicates") body.duplicateAction = "duplicates";
-      if (decision.action === "review") body.duplicateAction = "skip";
+      if (decision.action === "review") {
+        body.duplicateAction = "review";
+        body.duplicateIdsToImport = googleDuplicates
+          .filter((item) => decision.choices.get(item.reviewId) === "duplicates")
+          .map((item) => item.id)
+          .filter(Boolean);
+      }
       response = await fetch("/api/google-photos/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       result = await response.json().catch(() => ({}));
     }
@@ -413,6 +439,21 @@
     });
   }
 
+  async function playTrackById(id) {
+    let tracks = activeTracks();
+    let index = tracks.findIndex((item) => item.id === id);
+    if (index < 0) {
+      const track = audioState.tracks.find((item) => item.id === id);
+      if (track && !track.active) {
+        await api(`/api/audio/${track.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: true }) });
+        await loadAudio();
+        tracks = activeTracks();
+        index = tracks.findIndex((item) => item.id === id);
+      }
+    }
+    if (index >= 0) playTrackByIndex(index);
+  }
+
   function toggleAudioPlayback() {
     if (audioState.playing) {
       audioState.element.pause();
@@ -450,11 +491,7 @@
         if (track) await api(`/api/audio/${track.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !track.active }) });
         await loadAudio();
       }
-      if (play) {
-        const tracks = activeTracks();
-        const index = tracks.findIndex((item) => item.id === play.dataset.audioPlay);
-        if (index >= 0) playTrackByIndex(index);
-      }
+      if (play) await playTrackById(play.dataset.audioPlay);
       if (remove && confirm("Delete this song from carousel music?")) {
         await api(`/api/audio/${remove.dataset.audioDelete}`, { method: "DELETE" });
         await loadAudio();

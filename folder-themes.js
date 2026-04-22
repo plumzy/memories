@@ -95,6 +95,12 @@
     return `${count} ${count === 1 ? "memory" : "memories"}`;
   }
 
+  function folderMemoryCount(folder) {
+    const exactCount = Number(folder?.media_count ?? folder?.mediaCount);
+    if (Number.isFinite(exactCount) && exactCount >= 0) return exactCount;
+    return folderMedia(folder?.id).length;
+  }
+
   const baseRenderFolders = renderFolders;
   renderFolders = function renderRotatingFolders() {
     const grid = byId("folderGrid");
@@ -104,13 +110,14 @@
 
     grid.innerHTML = state.folders.map((folder) => {
       const allItems = folderMedia(folder.id);
+      const memoryCount = folderMemoryCount(folder);
       const rotationItems = folderRotationItems(folder.id);
       const images = rotationItems.map((item, index) => `<img class="folder-rotation-img ${index === 0 ? "active" : ""}" src="${thumbUrl(item)}" alt="" loading="lazy" decoding="async">`).join("");
       const placeholder = `<span class="folder-empty-art"><span>+</span><strong>No photos yet</strong></span>`;
       return `<button class="folder-card rotating-folder-card" type="button" data-folder="${folder.id}" data-rotation-count="${rotationItems.length}" data-rotation-index="0">
         <span class="folder-rotator" aria-hidden="true">${rotationItems.length ? images : placeholder}</span>
-        <span class="folder-count-chip">${allItems.length}</span>
-        <span class="folder-bottom-overlay"><strong>${escapeHtml(folder.name)}</strong><small>${countLabel(allItems.length)}</small></span>
+        <span class="folder-count-chip">${memoryCount}</span>
+        <span class="folder-bottom-overlay"><strong>${escapeHtml(folder.name)}</strong><small>${countLabel(memoryCount)}</small></span>
       </button>`;
     }).join("");
     observeFolderCards();

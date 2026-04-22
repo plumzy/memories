@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f8efff">
-  <title>Lavender Memories</title>
+  <title>Photographs We Can’t Miss to See</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -16,9 +16,9 @@
     <div class="tulip tulip-bottom" aria-hidden="true"><span></span><span></span><span></span></div>
 
     <header class="topbar">
-      <div>
-        <p class="eyebrow">Our anniversary story</p>
-        <h1>Lavender Memories</h1>
+      <div class="brand-copy">
+        <p class="eyebrow">OUR MEMORIES TOGETHER</p>
+        <h1>Photographs We Can’t Miss to See</h1>
       </div>
       <div class="top-actions">
         <button class="icon-text primary-action" id="importButton" type="button"><span>+</span> Import</button>
@@ -151,12 +151,12 @@
   </dialog>
 
   <dialog class="panel-dialog" id="importDialog">
-    <div class="dialog-shell">
+    <div class="dialog-shell import-shell">
       <header class="dialog-header">
         <button class="icon-button ghost" id="closeImport" type="button" aria-label="Close import">x</button>
         <div>
           <h2>Import memories</h2>
-          <p>Every image is compressed at 65-70% and thumbnailed on the server.</p>
+          <p>Queue up to 500 images. Each photo uploads one at a time through the server compression and thumbnail pipeline.</p>
         </div>
         <span></span>
       </header>
@@ -171,9 +171,24 @@
       <section class="control-card upload-drop" id="dropZone">
         <div class="drop-copy">
           <strong>Device photos</strong>
-          <p>Drop images here or choose files from this browser. Uploads use the same backend compression, thumbnail, R2, and Supabase pipeline.</p>
+          <p>Drop images here or choose up to 500 files. The queue safely resumes after reloads, network changes, or app pauses.</p>
         </div>
         <label class="primary-button">Choose files<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+      </section>
+      <section class="control-card queue-card" id="uploadQueuePanel">
+        <div class="queue-head">
+          <div>
+            <label>Upload queue</label>
+            <strong id="queueSummary">0 queued</strong>
+            <p id="queueHint">Select device photos to begin.</p>
+          </div>
+          <div class="queue-actions">
+            <button class="secondary-button" id="resumeUploadsButton" type="button">Resume</button>
+            <button class="secondary-button" id="clearCompletedUploadsButton" type="button">Clear done</button>
+          </div>
+        </div>
+        <div class="progress-shell queue-progress"><span id="queueOverallBar"></span></div>
+        <div class="upload-queue-list" id="uploadQueueList"></div>
       </section>
       <section class="control-card">
         <div class="import-card">

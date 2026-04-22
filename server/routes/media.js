@@ -6,6 +6,7 @@ import { supabase } from "../services/supabase.js";
 
 const router = express.Router();
 const UPLOAD_TIMEOUT_MS = 180000;
+const MEDIA_PAGE_SIZE = 1000;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024, files: 1 },
@@ -54,6 +55,36 @@ async function findMediaItem(id) {
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+async function fetchAllMediaItems() {
+  const rows = [];
+  for (let from = 0; ; from += MEDIA_PAGE_SIZE) {
+    const to = from + MEDIA_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("media_items")
+      .select("*")
+      .eq("user_id", userId())
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < MEDIA_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+function withFolderCounts(folders = [], mediaItems = []) {
+  const counts = new Map();
+  for (const item of mediaItems) {
+    if (!item.folder_id) continue;
+    counts.set(item.folder_id, (counts.get(item.folder_id) || 0) + 1);
+  }
+  return folders.map((folder) => {
+    const mediaCount = counts.get(folder.id) || 0;
+    return { ...folder, media_count: mediaCount, mediaCount };
+  });
 }
 
 function streamR2Object(res, object, fallbackType) {
@@ -164,17 +195,15 @@ async function deleteMediaItemsByIds(ids) {
 
 router.get("/media", async (_req, res, next) => {
   try {
-    const [{ data: folders, error: folderError }, { data: media, error: mediaError }, { data: carousel, error: carouselError }] = await Promise.all([
+    const [{ data: folders, error: folderError }, mediaItems, { data: carousel, error: carouselError }] = await Promise.all([
       supabase.from("folders").select("*").eq("user_id", userId()).order("created_at", { ascending: true }),
-      supabase.from("media_items").select("*").eq("user_id", userId()).order("created_at", { ascending: false }),
+      fetchAllMediaItems(),
       supabase.from("carousel_settings").select("*").eq("user_id", userId()).order("updated_at", { ascending: false }).limit(1).maybeSingle()
     ]);
     if (folderError) throw folderError;
-    if (mediaError) throw mediaError;
     if (carouselError) throw carouselError;
-    const mediaItems = media || [];
     backfillMissingStoredSizes(mediaItems);
-    res.json({ folders, media: mediaItems.map(withApiMediaUrls), carousel });
+    res.json({ folders: withFolderCounts(folders || [], mediaItems), media: mediaItems.map(withApiMediaUrls), carousel });
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,10 @@
 const UI_PREFS_KEY = "lavender-memories-ui-v1";
+const QUEUE_DB_NAME = "lavender-memories-upload-queue";
+const QUEUE_STORE = "items";
+const MAX_QUEUE_ITEMS = 500;
+const UPLOAD_CONCURRENCY = 3;
+const MAX_UPLOAD_RETRIES = 4;
+const UPLOAD_TIMEOUT_MS = 180000;
 
 const state = {
   folders: [],
@@ -16,7 +22,11 @@ const state = {
   longPressTimer: null,
   longPressTriggered: false,
   googleAccessToken: null,
-  googleSession: null
+  googleSession: null,
+  uploadQueue: [],
+  activeUploads: new Map(),
+  queueStarted: false,
+  queueDb: null
 };
 
 const byId = (id) => document.getElementById(id);
@@ -52,6 +62,13 @@ function folderById(id) { return state.folders.find((folder) => folder.id === id
 function mediaById(id) { return state.media.find((item) => item.id === id); }
 function folderMedia(folderId) { return state.media.filter((item) => item.folder_id === folderId); }
 function folderName(id) { return folderById(id)?.name || "Memories"; }
+function fileSizeLabel(size = 0) {
+  if (size > 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size > 1024) return `${Math.round(size / 1024)} KB`;
+  return `${size} B`;
+}
+function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function createQueueId() { return `queue-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
 
 async function loadData() {
   const data = await api("/api/media");
@@ -77,6 +94,7 @@ function renderAll() {
   renderCarousel();
   renderFolders();
   renderSummary();
+  renderUploadQueue();
   if (byId("folderDialog").open && state.currentFolderId) renderFolderDialog(state.currentFolderId);
   if (byId("settingsDialog").open) renderSettings();
   if (byId("importDialog").open) renderImport();
@@ -103,7 +121,7 @@ function renderCarousel() {
   if (items.length) {
     const item = items[state.carouselIndex];
     byId("heroImage").src = mediaUrl(item);
-    byId("heroImage").alt = item.caption || "Anniversary memory";
+    byId("heroImage").alt = item.caption || "Memory photograph";
     byId("heroCaption").classList.toggle("show", state.prefs.showCaptions);
     byId("heroCaption").innerHTML = state.prefs.showCaptions
       ? `<div class="caption-author">${escapeHtml(item.author ? `${item.author} wrote` : "Memory")}</div><div class="caption-copy">${escapeHtml(item.caption || "Add a memory here...")}</div>`
@@ -180,7 +198,7 @@ function renderViewer() {
   const item = mediaById(state.viewerIds[state.viewerIndex]);
   if (!item) return byId("viewerDialog").close();
   byId("viewerImage").src = mediaUrl(item);
-  byId("viewerImage").alt = item.caption || "Anniversary memory";
+  byId("viewerImage").alt = item.caption || "Memory photograph";
   byId("viewerCounter").textContent = `${state.viewerIndex + 1} / ${state.viewerIds.length}`;
   byId("viewerCaption").innerHTML = `<div class="caption-author">${escapeHtml(item.author ? `${item.author} wrote` : "Memory caption")}</div><div class="caption-copy">${escapeHtml(item.caption || "Add a memory here...")}</div>`;
   byId("toggleCarouselButton").textContent = item.included_in_carousel ? "Remove" : "Carousel";
@@ -197,20 +215,259 @@ function setProgress(active, width = 0) {
   byId("progressBar").style.width = `${width}%`;
 }
 
-async function uploadFiles(files) {
+function openQueueDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(QUEUE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(QUEUE_STORE)) db.createObjectStore(QUEUE_STORE, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function queueStore(mode = "readonly") {
+  if (!state.queueDb) return null;
+  return state.queueDb.transaction(QUEUE_STORE, mode).objectStore(QUEUE_STORE);
+}
+
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function persistQueueItem(item) {
+  if (!state.queueDb) return;
+  await requestToPromise(queueStore("readwrite").put(item));
+}
+
+async function removeQueueItemFromDb(id) {
+  if (!state.queueDb) return;
+  await requestToPromise(queueStore("readwrite").delete(id));
+}
+
+async function loadQueueFromDb() {
+  if (!state.queueDb) return [];
+  const items = await requestToPromise(queueStore().getAll());
+  return items.map((item) => ({
+    ...item,
+    status: ["compressing", "uploading"].includes(item.status) ? "pending" : item.status,
+    progress: ["compressing", "uploading"].includes(item.status) ? 0 : item.progress || 0
+  })).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+async function initUploadQueue() {
+  try {
+    state.queueDb = await openQueueDb();
+    state.uploadQueue = await loadQueueFromDb();
+    for (const item of state.uploadQueue) await persistQueueItem(item);
+    renderUploadQueue();
+    resumeUploadQueue();
+  } catch (error) {
+    console.error(error);
+    byId("importStatus").textContent = "Upload recovery storage is unavailable in this browser.";
+  }
+}
+
+function queueStats() {
+  const total = state.uploadQueue.length;
+  const uploaded = state.uploadQueue.filter((item) => item.status === "uploaded").length;
+  const failed = state.uploadQueue.filter((item) => item.status === "failed").length;
+  const active = state.uploadQueue.filter((item) => ["compressing", "uploading"].includes(item.status)).length;
+  const pending = state.uploadQueue.filter((item) => item.status === "pending").length;
+  const progress = total ? Math.round(state.uploadQueue.reduce((sum, item) => sum + (item.progress || 0), 0) / total) : 0;
+  return { total, uploaded, failed, active, pending, progress };
+}
+
+function renderUploadQueue() {
+  const list = byId("uploadQueueList");
+  if (!list) return;
+  const stats = queueStats();
+  byId("queueSummary").textContent = `${stats.total} / ${MAX_QUEUE_ITEMS} queued`;
+  byId("queueHint").textContent = stats.total
+    ? `${stats.uploaded} uploaded, ${stats.active} active, ${stats.pending} waiting, ${stats.failed} failed.`
+    : "Select device photos to begin.";
+  byId("queueOverallBar").style.width = `${stats.progress}%`;
+  byId("resumeUploadsButton").disabled = !stats.total || !navigator.onLine;
+  byId("clearCompletedUploadsButton").disabled = !stats.uploaded;
+  if (!state.uploadQueue.length) {
+    list.innerHTML = `<div class="queue-empty">No photos queued yet. Choose files or drop images above.</div>`;
+    return;
+  }
+  list.innerHTML = state.uploadQueue.map((item) => {
+    const canRetry = item.status === "failed";
+    const canRemove = !state.activeUploads.has(item.id);
+    const status = item.error && item.status === "failed" ? `failed: ${item.error}` : item.status;
+    return `<article class="queue-item ${item.status}" data-queue-id="${item.id}">
+      <div class="queue-name">
+        <span class="queue-dot"></span>
+        <div class="queue-title"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(status)} · ${fileSizeLabel(item.size)}</span></div>
+      </div>
+      <div class="queue-item-actions">
+        ${canRetry ? `<button type="button" data-queue-retry="${item.id}">Retry</button>` : ""}
+        ${canRemove ? `<button type="button" data-queue-remove="${item.id}">Remove</button>` : ""}
+      </div>
+      <div class="queue-meter"><span style="width:${item.progress || 0}%"></span></div>
+    </article>`;
+  }).join("");
+}
+
+async function updateQueueItem(id, patch) {
+  const item = state.uploadQueue.find((entry) => entry.id === id);
+  if (!item) return null;
+  Object.assign(item, patch, { updatedAt: Date.now() });
+  await persistQueueItem(item);
+  renderUploadQueue();
+  return item;
+}
+
+async function addFilesToQueue(files) {
   const images = files.filter((file) => file.type.startsWith("image/"));
   if (!images.length) return;
-  const form = new FormData();
-  form.append("folderId", state.importFolderId || "default");
-  form.append("folderName", folderName(state.importFolderId));
-  for (const file of images) form.append("images", file);
-  byId("importStatus").textContent = "Uploading and compressing memories...";
-  setProgress(true, 18);
-  await api("/api/upload", { method: "POST", body: form });
-  setProgress(true, 100);
-  byId("importStatus").textContent = `${images.length} photo${images.length === 1 ? "" : "s"} imported.`;
-  await loadData();
-  window.setTimeout(() => setProgress(false), 900);
+  const availableSlots = Math.max(0, MAX_QUEUE_ITEMS - state.uploadQueue.length);
+  const selected = images.slice(0, availableSlots);
+  if (!selected.length) {
+    byId("importStatus").textContent = `The queue is full at ${MAX_QUEUE_ITEMS} photos.`;
+    return;
+  }
+  const folderId = state.importFolderId || "default";
+  const folder = folderName(folderId);
+  for (const file of selected) {
+    const item = {
+      id: createQueueId(),
+      file,
+      name: file.name || "photo.jpg",
+      size: file.size || 0,
+      type: file.type || "image/jpeg",
+      folderId,
+      folderName: folder,
+      status: "pending",
+      progress: 0,
+      retries: 0,
+      error: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      nextAttemptAt: 0
+    };
+    state.uploadQueue.push(item);
+    await persistQueueItem(item);
+  }
+  byId("importStatus").textContent = `${selected.length} photo${selected.length === 1 ? "" : "s"} added to the upload queue.`;
+  if (images.length > selected.length) byId("importStatus").textContent += ` ${images.length - selected.length} skipped because the queue limit is ${MAX_QUEUE_ITEMS}.`;
+  renderUploadQueue();
+  resumeUploadQueue();
+}
+
+function nextUploadItem() {
+  const now = Date.now();
+  return state.uploadQueue.find((item) => {
+    if (!item.file) return false;
+    if (state.activeUploads.has(item.id)) return false;
+    if (item.status === "pending") return true;
+    return item.status === "failed" && item.retries < MAX_UPLOAD_RETRIES && (item.nextAttemptAt || 0) <= now;
+  });
+}
+
+function resumeUploadQueue() {
+  state.queueStarted = true;
+  if (!navigator.onLine) {
+    byId("importStatus").textContent = "Uploads paused while offline. They will resume when the connection returns.";
+    renderUploadQueue();
+    return;
+  }
+  while (state.activeUploads.size < UPLOAD_CONCURRENCY) {
+    const item = nextUploadItem();
+    if (!item) break;
+    processQueueItem(item).catch((error) => console.error(error));
+  }
+  renderUploadQueue();
+}
+
+function uploadWithProgress(item, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("folderId", item.folderId || "default");
+    form.append("folderName", item.folderName || folderName(item.folderId));
+    form.append("queueItemId", item.id);
+    form.append("images", item.file, item.name);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.responseType = "json";
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.round(22 + (event.loaded / event.total) * 68);
+      onProgress(Math.min(92, percent));
+    };
+    xhr.onload = () => {
+      const body = xhr.response || {};
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(body);
+      reject(new Error(body.error || `Upload failed with status ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Network upload failed."));
+    xhr.ontimeout = () => reject(new Error("Upload timed out. It will retry."));
+    xhr.onabort = () => reject(new Error("Upload was interrupted."));
+    xhr.send(form);
+  });
+}
+
+async function processQueueItem(item) {
+  state.activeUploads.set(item.id, true);
+  try {
+    await updateQueueItem(item.id, { status: "compressing", progress: 12, error: null });
+    await delay(120);
+    await updateQueueItem(item.id, { status: "uploading", progress: 22, error: null });
+    const result = await uploadWithProgress(item, (progress) => updateQueueItem(item.id, { progress }));
+    await updateQueueItem(item.id, { status: "uploaded", progress: 100, error: null, mediaId: result.media?.[0]?.id || null });
+    byId("importStatus").textContent = `${item.name} uploaded.`;
+    await loadData();
+  } catch (error) {
+    const retries = (item.retries || 0) + 1;
+    const nextAttemptAt = Date.now() + Math.min(30000, 2000 * retries * retries);
+    await updateQueueItem(item.id, {
+      status: "failed",
+      progress: Math.max(0, item.progress || 0),
+      retries,
+      nextAttemptAt,
+      error: error.message || "Upload failed."
+    });
+    byId("importStatus").textContent = retries < MAX_UPLOAD_RETRIES
+      ? `${item.name} failed. Retrying automatically.`
+      : `${item.name} failed. Use Retry when ready.`;
+    if (retries < MAX_UPLOAD_RETRIES) window.setTimeout(resumeUploadQueue, Math.max(1500, nextAttemptAt - Date.now()));
+  } finally {
+    state.activeUploads.delete(item.id);
+    renderUploadQueue();
+    window.setTimeout(resumeUploadQueue, 100);
+  }
+}
+
+async function retryQueueItem(id) {
+  await updateQueueItem(id, { status: "pending", progress: 0, error: null, nextAttemptAt: 0 });
+  resumeUploadQueue();
+}
+
+async function removeQueueItem(id) {
+  if (state.activeUploads.has(id)) return;
+  state.uploadQueue = state.uploadQueue.filter((item) => item.id !== id);
+  await removeQueueItemFromDb(id);
+  renderUploadQueue();
+}
+
+async function clearCompletedUploads() {
+  const completedIds = state.uploadQueue.filter((item) => item.status === "uploaded").map((item) => item.id);
+  state.uploadQueue = state.uploadQueue.filter((item) => item.status !== "uploaded");
+  for (const id of completedIds) await removeQueueItemFromDb(id);
+  renderUploadQueue();
+}
+
+async function uploadFiles(files) {
+  await addFilesToQueue(files.slice(0, MAX_QUEUE_ITEMS));
 }
 
 async function createFolder() {
@@ -307,6 +564,7 @@ function renderSettings() {
 
 function renderImport() {
   byId("importFolderList").innerHTML = state.folders.map((folder) => `<button class="${state.importFolderId === folder.id ? "active" : ""}" data-import-folder="${folder.id}" type="button">${escapeHtml(folder.name)}</button>`).join("");
+  renderUploadQueue();
 }
 
 async function launchGooglePhotos() {
@@ -376,8 +634,16 @@ function bindEvents() {
   byId("glowInput").addEventListener("input", (event) => { state.prefs.glow = Number(event.target.value); savePrefs(); renderCarousel(); renderSettings(); });
   byId("importFolderList").addEventListener("click", (event) => { const button = event.target.closest("[data-import-folder]"); if (!button) return; state.importFolderId = button.dataset.importFolder; renderImport(); });
   byId("createFolderButton").addEventListener("click", () => createFolder().catch(showError));
-  byId("fileInput").addEventListener("change", (event) => uploadFiles([...event.target.files]).catch(showError));
+  byId("fileInput").addEventListener("change", (event) => { uploadFiles([...event.target.files]).catch(showError); event.target.value = ""; });
   byId("connectGoogle").addEventListener("click", async () => { if (!(await maybeImportGoogleSelection())) await launchGooglePhotos(); });
+  byId("resumeUploadsButton").addEventListener("click", resumeUploadQueue);
+  byId("clearCompletedUploadsButton").addEventListener("click", () => clearCompletedUploads().catch(showError));
+  byId("uploadQueueList").addEventListener("click", (event) => {
+    const retry = event.target.closest("[data-queue-retry]");
+    const remove = event.target.closest("[data-queue-remove]");
+    if (retry) retryQueueItem(retry.dataset.queueRetry).catch(showError);
+    if (remove) removeQueueItem(remove.dataset.queueRemove).catch(showError);
+  });
   const dropZone = byId("dropZone");
   dropZone.addEventListener("dragover", (event) => { event.preventDefault(); dropZone.classList.add("dragging"); });
   dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragging"));
@@ -386,6 +652,9 @@ function bindEvents() {
   byId("deleteCaption").addEventListener("click", () => deleteCaption().catch(showError));
   byId("moveFolderList").addEventListener("click", (event) => { const button = event.target.closest("[data-move-folder]"); if (!button) return; moveIds(JSON.parse(byId("moveFolderList").dataset.ids || "[]"), button.dataset.moveFolder).catch(showError); });
   window.addEventListener("message", (event) => { if (event.data?.type === "GOOGLE_PHOTOS_TOKEN_VALUE") { state.googleAccessToken = event.data.accessToken; launchGooglePhotos().catch(showError); } });
+  window.addEventListener("online", () => { byId("importStatus").textContent = "Back online. Resuming uploads."; resumeUploadQueue(); });
+  window.addEventListener("offline", () => { byId("importStatus").textContent = "Offline. Uploads will resume automatically."; renderUploadQueue(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) resumeUploadQueue(); });
   document.addEventListener("keydown", (event) => { if (byId("viewerDialog").open && event.key === "ArrowLeft") changeViewer(-1); if (byId("viewerDialog").open && event.key === "ArrowRight") changeViewer(1); });
 }
 
@@ -402,4 +671,4 @@ window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault
 byId("installBtn").addEventListener("click", async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt = null; });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 bindEvents();
-loadData().catch(showError);
+Promise.all([loadData(), initUploadQueue()]).catch(showError);

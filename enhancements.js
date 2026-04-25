@@ -463,6 +463,8 @@
     });
   }
 
-  createAudioPanel();
-  loadAudio();
+  window.initAudio = function () {
+    createAudioPanel();
+    loadAudio();
+  };
 })();

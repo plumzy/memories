@@ -705,6 +705,7 @@ async function initAuth() {
   byId("logoutBtn").hidden = !authenticated;
   if (authenticated) {
     await Promise.all([loadData(), initUploadQueue()]).catch(showError);
+    window.initAudio?.();
   } else {
     showLogin();
   }
@@ -729,6 +730,7 @@ byId("loginForm").addEventListener("submit", async (event) => {
       byId("passphraseInput").value = "";
       errorEl.hidden = true;
       await Promise.all([loadData(), initUploadQueue()]).catch(showError);
+      window.initAudio?.();
     }
   } catch {
     errorEl.textContent = "Could not connect. Please try again.";

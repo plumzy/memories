@@ -29,48 +29,8 @@
     return String(name).trim().toLowerCase();
   }
 
-  function bufferToHex(buffer) {
-    return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-
-  async function hashFile(file) {
-    if (!window.crypto?.subtle) return null;
-    const buffer = await file.arrayBuffer();
-    return bufferToHex(await crypto.subtle.digest("SHA-256", buffer));
-  }
-
-  function imageDimensions(file) {
-    return new Promise((resolve) => {
-      const url = URL.createObjectURL(file);
-      const image = new Image();
-      image.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 });
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve({ width: 0, height: 0 });
-      };
-      image.src = url;
-    });
-  }
-
-  async function describeImageFile(file) {
-    const [fileHash, dimensions] = await Promise.all([hashFile(file), imageDimensions(file)]);
-    const name = normalizeName(file.name);
-    return {
-      reviewId: createQueueId(),
-      file,
-      name,
-      fileHash,
-      width: dimensions.width,
-      height: dimensions.height,
-      size: file.size || 0,
-      lastModified: file.lastModified || 0,
-      fallbackSignature: `${name}|${file.size || 0}`,
-      dimensionSignature: `${name}|${file.size || 0}|${dimensions.width || 0}x${dimensions.height || 0}`
-    };
-  }
+  const { hashFile, imageDimensions } = window.mediaUtils;
+  const describeImageFile = (file) => window.mediaUtils.describeImageFile(file, createQueueId);
 
   function existingDuplicateKeys() {
     const hashes = new Set();
@@ -276,21 +236,21 @@
     byId("importStatus").textContent = `${queued} photo${queued === 1 ? "" : "s"} added. ${duplicates.length} duplicate${duplicates.length === 1 ? "" : "s"} reviewed.`;
   };
 
-  uploadWithProgress = function enhancedUploadWithProgress(item, onProgress) {
-    return new Promise(async (resolve, reject) => {
-      const descriptor = item.fileHash ? item : await describeImageFile(item.file);
-      const form = new FormData();
-      form.append("folderId", item.folderId || "default");
-      form.append("folderName", item.folderName || folderName(item.folderId));
-      form.append("queueItemId", item.id);
-      form.append("fileHash", descriptor.fileHash || "");
-      form.append("duplicateSignature", descriptor.duplicateSignature || descriptor.dimensionSignature || "");
-      form.append("originalLastModified", descriptor.originalLastModified || descriptor.lastModified || 0);
-      form.append("originalWidth", descriptor.originalWidth || descriptor.width || 0);
-      form.append("originalHeight", descriptor.originalHeight || descriptor.height || 0);
-      form.append("duplicateAction", item.duplicateAction || "");
-      form.append("images", item.file, item.name);
+  uploadWithProgress = async function enhancedUploadWithProgress(item, onProgress) {
+    const descriptor = item.fileHash ? item : await describeImageFile(item.file);
+    const form = new FormData();
+    form.append("folderId", item.folderId || "default");
+    form.append("folderName", item.folderName || folderName(item.folderId));
+    form.append("queueItemId", item.id);
+    form.append("fileHash", descriptor.fileHash || "");
+    form.append("duplicateSignature", descriptor.duplicateSignature || descriptor.dimensionSignature || "");
+    form.append("originalLastModified", descriptor.originalLastModified || descriptor.lastModified || 0);
+    form.append("originalWidth", descriptor.originalWidth || descriptor.width || 0);
+    form.append("originalHeight", descriptor.originalHeight || descriptor.height || 0);
+    form.append("duplicateAction", item.duplicateAction || "");
+    form.append("images", item.file, item.name);
 
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/upload");
       xhr.responseType = "json";

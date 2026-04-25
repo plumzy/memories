@@ -145,9 +145,14 @@ async function backfillStoredSize(item) {
   }
 }
 
+const backfilledIds = new Set();
+
 function backfillMissingStoredSizes(media = []) {
-  const missing = media.filter((item) => !storedSizeFromMetadata(item.metadata || {})).slice(0, 30);
+  const missing = media
+    .filter((item) => !storedSizeFromMetadata(item.metadata || {}) && !backfilledIds.has(item.id))
+    .slice(0, 30);
   if (!missing.length) return;
+  missing.forEach((item) => backfilledIds.add(item.id));
   setTimeout(() => {
     mapWithLimit(missing, 3, backfillStoredSize).catch((error) => {
       console.warn("Could not backfill media stored sizes", error);
@@ -242,6 +247,40 @@ router.post("/folders", async (req, res, next) => {
       .single();
     if (error) throw error;
     res.status(201).json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/folders/:id", async (req, res, next) => {
+  try {
+    const { data: items, error: itemsError } = await supabase
+      .from("media_items")
+      .select("storage_key, thumbnail_storage_key")
+      .eq("user_id", userId())
+      .eq("folder_id", req.params.id);
+    if (itemsError) throw itemsError;
+
+    if (items?.length) {
+      await Promise.allSettled(items.flatMap((item) => [
+        deleteObject(item.storage_key),
+        deleteObject(item.thumbnail_storage_key)
+      ]));
+      const { error: deleteMediaError } = await supabase
+        .from("media_items")
+        .delete()
+        .eq("user_id", userId())
+        .eq("folder_id", req.params.id);
+      if (deleteMediaError) throw deleteMediaError;
+    }
+
+    const { error } = await supabase
+      .from("folders")
+      .delete()
+      .eq("id", req.params.id)
+      .eq("user_id", userId());
+    if (error) throw error;
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

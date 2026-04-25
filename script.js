@@ -32,6 +32,10 @@ const state = {
 const byId = (id) => document.getElementById(id);
 const api = async (path, options = {}) => {
   const response = await fetch(path, options);
+  if (response.status === 401) {
+    showLogin();
+    throw new Error("Authentication required.");
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(body.error || "Request failed.");
@@ -480,6 +484,28 @@ async function createFolder() {
   renderImport();
 }
 
+async function renameFolder(folderId) {
+  const folder = folderById(folderId);
+  if (!folder) return;
+  const name = window.prompt("Rename folder:", folder.name);
+  if (!name || name.trim() === folder.name) return;
+  await api(`/api/folders/${folderId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
+  await loadData();
+}
+
+async function deleteFolder(folderId) {
+  const folder = folderById(folderId);
+  if (!folder) return;
+  const count = folderMedia(folderId).length;
+  const msg = count
+    ? `Delete "${folder.name}" and all ${count} photo(s) inside? This cannot be undone.`
+    : `Delete empty folder "${folder.name}"?`;
+  if (!confirm(msg)) return;
+  await api(`/api/folders/${folderId}`, { method: "DELETE" });
+  byId("folderDialog").close();
+  await loadData();
+}
+
 async function deleteIds(ids) {
   if (!ids.length || !confirm(`Delete ${ids.length} selected memory item(s)?`)) return;
   for (const id of ids) await api(`/api/media/${id}`, { method: "DELETE" });
@@ -611,6 +637,8 @@ function bindEvents() {
   byId("heroStage").addEventListener("touchend", (event) => { const delta = event.changedTouches[0].clientX - state.touchStart; if (Math.abs(delta) > 40) changeCarousel(delta > 0 ? -1 : 1); });
   byId("folderGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-folder]"); if (card) openFolder(card.dataset.folder); });
   byId("folderImportButton").addEventListener("click", () => { state.importFolderId = state.currentFolderId; renderImport(); byId("importDialog").showModal(); });
+  byId("renameFolderButton").addEventListener("click", () => renameFolder(state.currentFolderId).catch(showError));
+  byId("deleteFolderButton").addEventListener("click", () => deleteFolder(state.currentFolderId).catch(showError));
   byId("mediaGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; if (state.longPressTriggered) { state.longPressTriggered = false; return; } if (state.selectedIds.size) toggleSelected(card.dataset.media); else openViewer(folderMedia(state.currentFolderId).map((item) => item.id), card.dataset.media); });
   byId("mediaGrid").addEventListener("contextmenu", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; event.preventDefault(); toggleSelected(card.dataset.media); });
   byId("mediaGrid").addEventListener("pointerdown", (event) => { const card = event.target.closest("[data-media]"); if (!card) return; clearTimeout(state.longPressTimer); state.longPressTriggered = false; state.longPressTimer = setTimeout(() => { state.longPressTriggered = true; toggleSelected(card.dataset.media); }, 520); });
@@ -666,9 +694,56 @@ function showError(error) {
   else alert(error.message || "Something went wrong.");
 }
 
+function showLogin() {
+  const dialog = byId("loginDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+async function initAuth() {
+  const { authenticated } = await fetch("/api/auth/status").then((r) => r.json());
+  byId("logoutBtn").hidden = !authenticated;
+  if (authenticated) {
+    await Promise.all([loadData(), initUploadQueue()]).catch(showError);
+  } else {
+    showLogin();
+  }
+}
+
+byId("loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const errorEl = byId("loginError");
+  const passphrase = byId("passphraseInput").value;
+  try {
+    const result = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passphrase })
+    }).then((r) => r.json());
+    if (!result.ok && result.error) {
+      errorEl.textContent = result.error;
+      errorEl.hidden = false;
+    } else {
+      byId("loginDialog").close();
+      byId("logoutBtn").hidden = false;
+      byId("passphraseInput").value = "";
+      errorEl.hidden = true;
+      await Promise.all([loadData(), initUploadQueue()]).catch(showError);
+    }
+  } catch {
+    errorEl.textContent = "Could not connect. Please try again.";
+    errorEl.hidden = false;
+  }
+});
+
+byId("logoutBtn").addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  byId("logoutBtn").hidden = true;
+  showLogin();
+});
+
 let deferredPrompt;
 window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredPrompt = event; });
 byId("installBtn").addEventListener("click", async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt = null; });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 bindEvents();
-Promise.all([loadData(), initUploadQueue()]).catch(showError);
+initAuth().catch(showError);

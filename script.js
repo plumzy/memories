@@ -687,6 +687,7 @@ function bindEvents() {
 }
 
 function showError(error) {
+  if (error.message === "Authentication required.") return;
   console.error(error);
   const target = byId("importStatus");
   setProgress(false);
@@ -717,7 +718,7 @@ byId("loginForm").addEventListener("submit", async (event) => {
     const result = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passphrase })
+      body: JSON.stringify({ username: byId("usernameInput").value, passphrase })
     }).then((r) => r.json());
     if (!result.ok && result.error) {
       errorEl.textContent = result.error;

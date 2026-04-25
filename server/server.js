@@ -41,11 +41,14 @@ app.get("/api/auth/status", (req, res) => {
 app.post("/api/auth/login", (req, res) => {
   const passphrase = process.env.APP_PASSPHRASE;
   if (!passphrase) return res.json({ ok: true });
-  if (req.body.passphrase === passphrase) {
+  const expectedUsername = process.env.APP_USERNAME;
+  const correctUser = !expectedUsername || req.body.username === expectedUsername;
+  const correctPass = req.body.passphrase === passphrase;
+  if (correctUser && correctPass) {
     req.session.authenticated = true;
     res.json({ ok: true });
   } else {
-    res.status(401).json({ ok: false, error: "Incorrect passphrase." });
+    res.status(401).json({ ok: false, error: "Incorrect username or passphrase." });
   }
 });
 

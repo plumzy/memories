@@ -66,37 +66,10 @@
     });
   }
 
-  function imageDimensions(file) {
-    return new Promise((resolve) => {
-      if (!file || !file.type?.startsWith("image/")) return resolve({ width: 0, height: 0 });
-      const objectUrl = URL.createObjectURL(file);
-      const image = new Image();
-      image.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 });
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        resolve({ width: 0, height: 0 });
-      };
-      image.src = objectUrl;
-    });
-  }
-
-  function bufferToHex(buffer) {
-    return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-
-  async function hashFile(file) {
-    if (!window.crypto?.subtle) return null;
-    const buffer = await file.arrayBuffer();
-    return bufferToHex(await crypto.subtle.digest("SHA-256", buffer));
-  }
-
   async function describeReplacementFile(file) {
     const [dimensions, fileHash, previewDataUrl] = await Promise.all([
-      imageDimensions(file),
-      hashFile(file).catch(() => null),
+      window.mediaUtils.imageDimensions(file),
+      window.mediaUtils.hashFile(file).catch(() => null),
       createPreviewDataUrl(file)
     ]);
     const normalizedName = String(file.name || "photo.jpg").trim().toLowerCase();

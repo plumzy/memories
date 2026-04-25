@@ -31,6 +31,7 @@
         <button class="icon-text primary-action" id="importButton" type="button" aria-label="Import photos"><span>+</span> Import</button>
         <button class="icon-button" id="settingsButton" type="button" aria-label="Carousel controls" title="Carousel controls">▦</button>
         <button class="icon-text install-action" id="installBtn" type="button" aria-label="Install app" title="Install app"><span>↓</span><span>Install</span></button>
+        <button class="icon-button" id="logoutBtn" type="button" aria-label="Log out" title="Log out" hidden>⎋</button>
       </div>
     </header>
 
@@ -76,7 +77,11 @@
           <h2 id="folderTitle">Folder</h2>
           <p id="folderSubtitle"></p>
         </div>
-        <button class="icon-button" id="folderImportButton" type="button" aria-label="Import to folder">+</button>
+        <div class="folder-header-actions">
+          <button class="icon-button ghost" id="renameFolderButton" type="button" aria-label="Rename folder" title="Rename folder">✎</button>
+          <button class="icon-button ghost danger" id="deleteFolderButton" type="button" aria-label="Delete folder" title="Delete folder">✕</button>
+          <button class="icon-button" id="folderImportButton" type="button" aria-label="Import to folder">+</button>
+        </div>
       </header>
       <p class="helper-line">Right-click or long-press a photo to select more than one memory.</p>
       <div class="batch-bar" id="batchBar">
@@ -235,6 +240,22 @@
     </div>
   </dialog>
 
+  <dialog id="loginDialog" class="panel-dialog small">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <span></span>
+        <div><h2>Welcome back</h2><p>Enter the passphrase to access your memories.</p></div>
+        <span></span>
+      </header>
+      <form id="loginForm" class="login-form">
+        <input id="passphraseInput" type="password" placeholder="Passphrase" autocomplete="current-password" required>
+        <p class="login-error" id="loginError" hidden></p>
+        <button class="primary-button" type="submit">Unlock</button>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="/media-utils.js" defer></script>
   <script src="/script.js" defer></script>
   <script src="/enhancements.js" defer></script>
   <script src="/upload-scale.js" defer></script>

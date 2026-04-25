@@ -195,3 +195,7 @@ textarea { width: 100%; min-height: 140px; resize: vertical; margin-bottom: 12px
 @media (max-width: 900px) { .topbar { flex-direction: column; } .top-actions { padding-top: 0; justify-content: flex-start; } .brand-copy { max-width: 100%; } }
 @media (max-width: 820px) { .folder-grid, .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .select-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .upload-drop, .queue-head { align-items: flex-start; flex-direction: column; } .queue-actions { justify-content: flex-start; } }
 @media (max-width: 560px) { .app-shell { padding: 22px 12px 42px; } .topbar { align-items: flex-start; } h1 { font-size: clamp(28px, 10vw, 40px); } .icon-text { min-width: 42px; padding: 0 12px; } .hero-stage { min-height: 420px; height: 66vh; border-radius: 24px; } .hero-nav, .viewer-nav { width: 42px; height: 42px; } .folder-grid, .media-grid { gap: 12px; } .folder-card { height: 190px; } .media-card { height: 200px; } .viewer-actions { gap: 6px; border-radius: 24px; flex-wrap: wrap; } .viewer-actions button { min-height: 40px; padding: 0 10px; font-size: 13px; } .inline-create { grid-template-columns: 1fr; } .queue-item { grid-template-columns: 1fr; } .queue-item-actions { justify-content: flex-start; } }
+.login-form { display: grid; gap: 12px; margin-top: 4px; }
+.login-form input[type="password"] { width: 100%; }
+.login-error { color: var(--danger); font-size: 14px; margin: 0; }
+.folder-header-actions { display: flex; align-items: center; gap: 4px; }

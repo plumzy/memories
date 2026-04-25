@@ -4,6 +4,19 @@ import { compressImage } from "../services/compression.js";
 import { mediaKey, uploadObject } from "../services/r2.js";
 import { supabase } from "../services/supabase.js";
 
+async function mapWithLimit(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await mapper(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 const router = express.Router();
 const userId = () => process.env.APP_USER_ID || "anniversary";
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -119,9 +132,13 @@ router.get("/google-photos/callback", async (req, res, next) => {
     if (!response.ok) throw new Error(`Google token exchange failed: ${await response.text()}`);
     const token = await response.json();
     const state = req.query.state || "";
+    const targetOrigin = process.env.APP_BASE_URL || "*";
     res.send(`<!doctype html><script>
-      window.opener && window.opener.postMessage(${JSON.stringify({ type: "GOOGLE_PHOTOS_TOKEN" })}, "*");
-      window.opener && window.opener.postMessage({ type: "GOOGLE_PHOTOS_TOKEN_VALUE", accessToken: ${JSON.stringify(token.access_token)}, state: ${JSON.stringify(state)} }, "*");
+      const target = ${JSON.stringify(targetOrigin)};
+      if (window.opener) {
+        window.opener.postMessage(${JSON.stringify({ type: "GOOGLE_PHOTOS_TOKEN" })}, target);
+        window.opener.postMessage({ type: "GOOGLE_PHOTOS_TOKEN_VALUE", accessToken: ${JSON.stringify(token.access_token)}, state: ${JSON.stringify(state)} }, target);
+      }
       window.close();
     </script><p>Google Photos connected. You can close this tab.</p>`);
   } catch (error) {
@@ -174,28 +191,20 @@ router.post("/google-photos/import", async (req, res, next) => {
     const duplicateFolder = duplicateAction === "duplicates" || (duplicateAction === "review" && reviewedDuplicateIds.size)
       ? await ensureDuplicateFolder()
       : null;
-    const imported = [];
-    const skipped = [];
-
-    for (const item of mediaItems) {
+    const results = await mapWithLimit(mediaItems, 3, async (item) => {
       const isDuplicate = item.id && existingGoogleIds.has(item.id);
-      if (isDuplicate && duplicateAction === "skip") {
-        skipped.push(item.id);
-        continue;
-      }
-      if (isDuplicate && duplicateAction === "review" && !reviewedDuplicateIds.has(item.id)) {
-        skipped.push(item.id);
-        continue;
-      }
+      if (isDuplicate && duplicateAction === "skip") return { skipped: item.id };
+      if (isDuplicate && duplicateAction === "review" && !reviewedDuplicateIds.has(item.id)) return { skipped: item.id };
+
       const sendToDuplicateFolder = isDuplicate && duplicateFolder && (duplicateAction === "duplicates" || reviewedDuplicateIds.has(item.id));
       const targetFolderId = sendToDuplicateFolder ? duplicateFolder.id : folderId;
       const targetFolderName = sendToDuplicateFolder ? duplicateFolder.name : folderName;
       await ensureFolder(targetFolderId, targetFolderName);
 
       const baseUrl = item.baseUrl || item.mediaFile?.baseUrl;
-      if (!baseUrl) continue;
+      if (!baseUrl) return null;
       const photoRes = await fetch(`${baseUrl}=w2200-h2200`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!photoRes.ok) continue;
+      if (!photoRes.ok) return null;
       const buffer = Buffer.from(await photoRes.arrayBuffer());
       const file = {
         buffer,
@@ -229,8 +238,11 @@ router.post("/google-photos/import", async (req, res, next) => {
         .select()
         .single();
       if (error) throw error;
-      imported.push(withApiMediaUrls(data));
-    }
+      return { imported: withApiMediaUrls(data) };
+    });
+
+    const imported = results.filter((r) => r?.imported).map((r) => r.imported);
+    const skipped = results.filter((r) => r?.skipped).map((r) => r.skipped);
     res.status(201).json({ media: imported, duplicates: duplicates.map((item) => item.id), skipped });
   } catch (error) {
     next(error);
